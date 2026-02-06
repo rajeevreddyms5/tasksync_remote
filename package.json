@@ -1,10 +1,10 @@
 {
   "name": "tasksync-chat",
-  "publisher": "4regab",
+  "publisher": "RAJEEVREDDY",
   "displayName": "TaskSync",
   "description": "Automate AI conversations. Queue your prompts or tasks. Work uninterrupted.",
   "icon": "media/Tasksync-logo.png",
-  "version": "2.0.12",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -24,7 +24,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/4regab/TaskSync.git"
+    "url": "https://github.com/rajeevreddyms5/tasksync_extention.git"
   },
   "license": "MIT",
   "activationEvents": [
