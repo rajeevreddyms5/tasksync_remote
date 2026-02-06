@@ -9,7 +9,7 @@ This fork is based on [4regab/TaskSync](https://github.com/4regab/TaskSync).
 | **Upstream Repository** | https://github.com/4regab/TaskSync |
 | **Upstream Latest Commit** | `b6bacf86c0d27ab978788a521c3174e2184cbea3` (2026-01-06) |
 | **Last Sync Check** | 2026-01-06 |
-| **Fork Version** | 2.0.12 |
+| **Fork Version** | 1.0.1 |
 
 ## Custom Features (This Fork)
 

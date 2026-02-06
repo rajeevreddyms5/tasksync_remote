@@ -4,22 +4,23 @@
 
 TaskSync Remote lets you batch and queue your prompts to AI agents in VS Code, so they can keep working while you stay focused. Perfect for long-running tasks, repetitive workflows, or hands-free automation—saving you time and reducing premium requests.
 
-> **Attribution:** This extension is based on [TaskSync by intuitiv](https://github.com/intuitiv/TaskSync), which itself is a fork of [4regab/TaskSync](https://github.com/4regab/TaskSync). This version includes custom modifications and enhanced Remote Mobile/Web Access features.
+> **Fork of:** [4regab/TaskSync](https://github.com/4regab/TaskSync) - The original TaskSync extension. This fork adds a built-in remote server for mobile/browser access.
 
 ---
 
 ## 🆕 What's New in TaskSync Remote
 
-Compared to the original TaskSync, this fork includes these **exclusive enhancements**:
+Compared to the original TaskSync, this fork includes these **exclusive features**:
 
-| Feature | Original | TaskSync Remote |
-|---------|----------|-----------------|
-| **Remote UI Light/Dark Theme** | Basic dark only | ✅ Full light & dark theme with proper toggle |
-| **Terminal Output Display** | Limited | ✅ Terminal-style display with working directory (PS C:\path>) |
-| **Connection Stability** | Aggressive reconnection loops | ✅ Smart reconnection only when needed |
-| **Terminal Escape Codes** | Shows raw codes (]633;C) | ✅ Clean output with escape codes stripped |
-| **File Browser in Remote UI** | Basic | ✅ Enhanced with light theme support |
-| **Mobile-Optimized UI** | Partial | ✅ Fully responsive with improved spacing |
+| Feature | Original TaskSync | TaskSync Remote |
+|---------|-------------------|-----------------|
+| **Built-in Remote Server** | ❌ Not available | ✅ Control VS Code from phone/tablet/browser |
+| **Remote UI Light/Dark Theme** | N/A | ✅ Full light & dark theme with proper toggle |
+| **Terminal Output Display** | N/A | ✅ Terminal-style display with working directory (PS C:\path>) |
+| **Connection Stability** | N/A | ✅ Smart reconnection, no aggressive polling |
+| **Terminal Escape Codes** | N/A | ✅ Clean output with escape codes stripped |
+| **File Browser in Remote UI** | N/A | ✅ Browse workspace files from mobile |
+| **Mobile-Optimized UI** | N/A | ✅ Fully responsive with improved spacing |
 
 ---
 
@@ -157,13 +158,16 @@ MIT - See [LICENSE](LICENSE) for details.
 
 ## Credits & Attribution
 
-This project builds upon the excellent work of the TaskSync community:
+This project is a fork of [4regab/TaskSync](https://github.com/4regab/TaskSync), the original TaskSync extension.
 
-- **Original Creator:** [4regab/TaskSync](https://github.com/4regab/TaskSync) - The original TaskSync extension
-- **Remote Access Features:** [intuitiv/TaskSync](https://github.com/intuitiv/TaskSync) - Added Remote Mobile/Web Access capability
-- **This Fork:** Custom modifications for improved remote UI, theme support, and terminal display
+**This fork adds:**
+- Built-in remote server for mobile/browser access
+- Light/dark theme support for remote UI
+- Terminal output display with working directory
+- Connection stability improvements
+- Mobile-optimized responsive UI
 
-Thank you to all contributors who made TaskSync possible!
+Thank you to the original creators for making TaskSync possible!
 
 > ⚠️ **GitHub Security Notice:**  
 > GitHub prohibits use of their servers for excessive automated bulk activity. Please review [GitHub Acceptable Use Policies](https://docs.github.com/site-policy/acceptable-use-policies/github-acceptable-use-policies#4-spam-and-inauthentic-activity-on-github) and use TaskSync responsibly.

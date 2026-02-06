@@ -2,7 +2,7 @@
 
 All notable changes to TaskSync Remote will be documented in this file.
 
-## [1.0.1] - 2025-02-06
+## [1.0.1] - 2026-02-06
 
 ### Fixed
 - Report Issue button now links to correct repository
@@ -10,8 +10,10 @@ All notable changes to TaskSync Remote will be documented in this file.
 
 ### Changed
 - Updated README with feature comparison table highlighting differences from original TaskSync
+- Simplified attribution - now correctly credits original 4regab/TaskSync only
+- Remote server is our own implementation, not derived from intuitiv fork
 
-## [1.0.0] - 2025-01-27
+## [1.0.0] - 2026-01-27
 
 ### Initial Release
 
