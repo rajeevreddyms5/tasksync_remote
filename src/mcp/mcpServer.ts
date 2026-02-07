@@ -106,17 +106,21 @@ export class McpServerManager {
                         question: z.string()
                             .min(1, "Question cannot be empty")
                             .max(MAX_QUESTION_LENGTH, `Question cannot exceed ${MAX_QUESTION_LENGTH} characters`)
-                            .describe("The question or prompt to display to the user")
+                            .describe("The question or prompt to display to the user"),
+                        choices: z.array(z.object({
+                            label: z.string().describe("Display text for the choice button"),
+                            value: z.string().describe("Value sent back when this choice is selected")
+                        })).optional().describe("Optional list of choices to display as clickable buttons")
                     })
                 },
-                async (args: { question: string }, extra: { signal?: AbortSignal }) => {
+                async (args: { question: string; choices?: Array<{ label: string; value: string }> }, extra: { signal?: AbortSignal }) => {
                     const tokenSource = new vscode.CancellationTokenSource();
                     if (extra.signal) {
                         extra.signal.onabort = () => tokenSource.cancel();
                     }
 
                     const result = await askUser(
-                        { question: args.question },
+                        { question: args.question, choices: args.choices },
                         provider,
                         tokenSource.token
                     );

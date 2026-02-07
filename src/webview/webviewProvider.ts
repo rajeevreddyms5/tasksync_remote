@@ -137,10 +137,11 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     // Persisted history from past sessions (loaded from disk)
     private _persistedHistory: ToolCallEntry[] = [];
     private _currentToolCallId: string | null = null;
+    private _currentExplicitChoices: ParsedChoice[] | undefined;
 
     // Webview ready state - prevents race condition on first message
     private _webviewReady: boolean = false;
-    private _pendingToolCallMessage: { id: string; prompt: string } | null = null;
+    private _pendingToolCallMessage: { id: string; prompt: string; explicitChoices?: ParsedChoice[] } | null = null;
 
     // Debounce timer for queue persistence
     private _queueSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -686,7 +687,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     /**
      * Wait for user response
      */
-    public async waitForUserResponse(question: string): Promise<UserResponseResult> {
+    public async waitForUserResponse(question: string, explicitChoices?: Array<{ label: string; value: string }>): Promise<UserResponseResult> {
         // If view is not available, open the sidebar first
         if (!this._view) {
             // Open the TaskSync sidebar view
@@ -777,9 +778,21 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._currentSessionCalls.unshift(pendingEntry);
         this._currentSessionCallsMap.set(toolCallId, pendingEntry); // O(1) lookup
 
-        // Parse choices from question and determine if it's an approval question
-        const choices = this._parseChoices(question);
+        // Use explicit choices from the tool call if provided, otherwise parse from question text
+        let choices: ParsedChoice[];
+        if (explicitChoices && explicitChoices.length > 0) {
+            choices = explicitChoices.map(c => ({
+                label: c.label.length > 40 ? c.label.substring(0, 37) + '...' : c.label,
+                value: c.value,
+                shortLabel: c.value.length <= 3 ? c.value : undefined
+            }));
+        } else {
+            choices = this._parseChoices(question);
+        }
         const isApproval = choices.length === 0 && this._isApprovalQuestion(question);
+
+        // Store explicit choices for webview restore
+        this._currentExplicitChoices = explicitChoices && explicitChoices.length > 0 ? choices : undefined;
 
         // Wait for webview to be ready (JS initialized) before sending message
         if (!this._webviewReady) {
@@ -809,7 +822,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             this.playNotificationSound();
         } else {
             // Fallback: queue the message for when webview becomes ready
-            this._pendingToolCallMessage = { id: toolCallId, prompt: question };
+            this._pendingToolCallMessage = { id: toolCallId, prompt: question, explicitChoices: choices.length > 0 && explicitChoices ? choices : undefined };
         }
         
         // Always broadcast to remote clients (regardless of local webview state)
@@ -949,7 +962,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         // If there's a pending tool call message that was never sent, send it now
         if (this._pendingToolCallMessage) {
             const prompt = this._pendingToolCallMessage.prompt;
-            const choices = this._parseChoices(prompt);
+            const choices = this._pendingToolCallMessage.explicitChoices || this._parseChoices(prompt);
             const isApproval = choices.length === 0 && this._isApprovalQuestion(prompt);
             this._postMessage({
                 type: 'toolCallPending',
@@ -967,7 +980,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             const pendingEntry = this._currentSessionCallsMap.get(this._currentToolCallId);
             if (pendingEntry && pendingEntry.status === 'pending') {
                 const prompt = pendingEntry.prompt;
-                const choices = this._parseChoices(prompt);
+                const choices = this._currentExplicitChoices || this._parseChoices(prompt);
                 const isApproval = choices.length === 0 && this._isApprovalQuestion(prompt);
                 this._postMessage({
                     type: 'toolCallPending',

@@ -53,6 +53,24 @@
             "question": {
               "type": "string",
               "description": "The question or prompt to display to the user"
+            },
+            "choices": {
+              "type": "array",
+              "description": "Optional list of choices to display as buttons. When provided, these are shown as clickable options so the user can respond with a single click. Use for multiple-choice questions, confirmations, or any question with a fixed set of answers.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "description": "Display text for the choice button"
+                  },
+                  "value": {
+                    "type": "string",
+                    "description": "Value sent back when this choice is selected"
+                  }
+                },
+                "required": ["label", "value"]
+              }
             }
           },
           "required": [
