@@ -26,6 +26,9 @@
     // Settings state
     let soundEnabled = true;
     let interactiveApprovalEnabled = true;
+    let desktopNotificationEnabled = true;
+    let autoFocusPanelEnabled = true;
+    let mobileNotificationEnabled = false;
     let reusablePrompts = [];
     let audioUnlocked = false; // Track if audio playback has been unlocked by user gesture
 
@@ -67,7 +70,7 @@
     let slashDropdown, slashList, slashEmpty;
     // Settings modal elements
     let settingsModal, settingsModalOverlay, settingsModalClose;
-    let soundToggle, interactiveApprovalToggle, promptsList, addPromptBtn, addPromptForm;
+    let soundToggle, desktopNotificationToggle, autoFocusPanelToggle, mobileNotificationToggle, interactiveApprovalToggle, promptsList, addPromptBtn, addPromptForm;
     let instructionInjectionSelect, instructionTextArea, instructionTextSaveBtn, instructionInjectBtn, instructionRemoveBtn, instructionResetBtn, instructionStatus;
     let instructionInjection = 'off';
     let instructionText = '';
@@ -341,14 +344,41 @@
         var modalContent = document.createElement('div');
         modalContent.className = 'settings-modal-content';
 
-        // Sound section - simplified, toggle right next to header
+        // Sound section
         var soundSection = document.createElement('div');
         soundSection.className = 'settings-section';
         soundSection.innerHTML = '<div class="settings-section-header">' +
-            '<div class="settings-section-title"><span class="codicon codicon-unmute"></span> Notifications</div>' +
+            '<div class="settings-section-title"><span class="codicon codicon-unmute"></span> Sound</div>' +
             '<div class="toggle-switch active" id="sound-toggle" role="switch" aria-checked="true" aria-label="Enable notification sound" tabindex="0"></div>' +
             '</div>';
         modalContent.appendChild(soundSection);
+
+        // Desktop Notification section
+        var desktopNotifSection = document.createElement('div');
+        desktopNotifSection.className = 'settings-section';
+        desktopNotifSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title"><span class="codicon codicon-bell"></span> Desktop Notification</div>' +
+            '<div class="toggle-switch active" id="desktop-notification-toggle" role="switch" aria-checked="true" aria-label="Enable desktop notification popup" tabindex="0"></div>' +
+            '</div>';
+        modalContent.appendChild(desktopNotifSection);
+
+        // Auto-Focus Panel section
+        var autoFocusSection = document.createElement('div');
+        autoFocusSection.className = 'settings-section';
+        autoFocusSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title"><span class="codicon codicon-pin"></span> Auto-Focus Panel</div>' +
+            '<div class="toggle-switch active" id="auto-focus-panel-toggle" role="switch" aria-checked="true" aria-label="Auto-focus TaskSync panel on new question" tabindex="0"></div>' +
+            '</div>';
+        modalContent.appendChild(autoFocusSection);
+
+        // Mobile Notification section
+        var mobileNotifSection = document.createElement('div');
+        mobileNotifSection.className = 'settings-section';
+        mobileNotifSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title"><span class="codicon codicon-device-mobile"></span> Mobile Notification</div>' +
+            '<div class="toggle-switch" id="mobile-notification-toggle" role="switch" aria-checked="false" aria-label="Enable mobile browser push notification" tabindex="0"></div>' +
+            '</div>';
+        modalContent.appendChild(mobileNotifSection);
 
         // Interactive approval section - toggle interactive Yes/No + choices UI
         var approvalSection = document.createElement('div');
@@ -416,6 +446,9 @@
 
         // Cache inner elements
         soundToggle = document.getElementById('sound-toggle');
+        desktopNotificationToggle = document.getElementById('desktop-notification-toggle');
+        autoFocusPanelToggle = document.getElementById('auto-focus-panel-toggle');
+        mobileNotificationToggle = document.getElementById('mobile-notification-toggle');
         interactiveApprovalToggle = document.getElementById('interactive-approval-toggle');
         promptsList = document.getElementById('prompts-list');
         addPromptBtn = document.getElementById('add-prompt-btn');
@@ -445,16 +478,28 @@
         // Drag-and-drop image support on the input area
         var dropTarget = inputAreaContainer || chatInput;
         if (dropTarget) {
+            // Helper: check if drag event might contain files or file URIs
+            function hasDragFiles(dt) {
+                if (!dt || !dt.types) return false;
+                for (var i = 0; i < dt.types.length; i++) {
+                    var t = dt.types[i];
+                    if (t === 'Files' || t === 'text/uri-list' || t.indexOf('vscode') !== -1) return true;
+                }
+                return false;
+            }
+
             dropTarget.addEventListener('dragover', function (e) {
-                if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
+                if (hasDragFiles(e.dataTransfer)) {
                     e.preventDefault();
+                    e.stopPropagation();
                     e.dataTransfer.dropEffect = 'copy';
                     dropTarget.classList.add('drag-over-input');
                 }
             });
             dropTarget.addEventListener('dragenter', function (e) {
-                if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
+                if (hasDragFiles(e.dataTransfer)) {
                     e.preventDefault();
+                    e.stopPropagation();
                     dropTarget.classList.add('drag-over-input');
                 }
             });
@@ -465,13 +510,39 @@
                 }
             });
             dropTarget.addEventListener('drop', function (e) {
-                dropTarget.classList.remove('drag-over-input');
-                if (!e.dataTransfer || !e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
                 e.preventDefault();
-                for (var i = 0; i < e.dataTransfer.files.length; i++) {
-                    var file = e.dataTransfer.files[i];
-                    if (file.type.indexOf('image/') === 0) {
-                        processImageFile(file);
+                e.stopPropagation();
+                dropTarget.classList.remove('drag-over-input');
+                var handled = false;
+
+                // First: try standard File API (works for OS file manager drops)
+                if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    for (var i = 0; i < e.dataTransfer.files.length; i++) {
+                        var file = e.dataTransfer.files[i];
+                        if (file.type.indexOf('image/') === 0) {
+                            processImageFile(file);
+                            handled = true;
+                        }
+                    }
+                }
+
+                // Fallback: try text/uri-list (for VS Code Explorer or other URI-based drops)
+                if (!handled && e.dataTransfer) {
+                    var uriList = e.dataTransfer.getData('text/uri-list');
+                    if (uriList) {
+                        var uris = uriList.split(/\r?\n/).filter(function (u) { return u && u.indexOf('#') !== 0; });
+                        var imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg'];
+                        for (var j = 0; j < uris.length; j++) {
+                            var uri = uris[j].trim();
+                            if (!uri) continue;
+                            var lowerUri = uri.toLowerCase();
+                            var isImage = imageExtensions.some(function (ext) { return lowerUri.endsWith(ext); });
+                            if (isImage) {
+                                // Send URI to extension for processing (extension can read from disk)
+                                vscode.postMessage({ type: 'saveImageFromUri', uri: uri });
+                                handled = true;
+                            }
+                        }
                     }
                 }
             });
@@ -523,6 +594,24 @@
                     e.preventDefault();
                     toggleSoundSetting();
                 }
+            });
+        }
+        if (desktopNotificationToggle) {
+            desktopNotificationToggle.addEventListener('click', toggleDesktopNotificationSetting);
+            desktopNotificationToggle.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleDesktopNotificationSetting(); }
+            });
+        }
+        if (autoFocusPanelToggle) {
+            autoFocusPanelToggle.addEventListener('click', toggleAutoFocusPanelSetting);
+            autoFocusPanelToggle.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAutoFocusPanelSetting(); }
+            });
+        }
+        if (mobileNotificationToggle) {
+            mobileNotificationToggle.addEventListener('click', toggleMobileNotificationSetting);
+            mobileNotificationToggle.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleMobileNotificationSetting(); }
             });
         }
         if (interactiveApprovalToggle) {
@@ -775,10 +864,27 @@
         // Expand slash commands to full prompt text
         text = expandSlashCommands(text);
 
-        // Hide approval modal when sending any response
+        // Hide approval modal and choices bar when sending any response
         hideApprovalModal();
+        hideChoicesBar();
 
-        // If processing response (AI working), auto-queue the message
+        // If there's a pending tool call, ALWAYS submit directly (never queue)
+        // This ensures typed text works the same as clicking approval/choice buttons
+        if (pendingToolCall) {
+            vscode.postMessage({ type: 'submit', value: text, attachments: currentAttachments });
+            if (chatInput) {
+                chatInput.value = '';
+                chatInput.style.height = 'auto';
+                updateInputHighlighter();
+            }
+            currentAttachments = [];
+            updateChipsDisplay();
+            updateSendButtonState();
+            saveWebviewState();
+            return;
+        }
+
+        // If processing response (AI working) and no pending tool call, auto-queue the message
         if (isProcessingResponse && text) {
             addToQueue(text);
             // This reduces friction - user's prompt is in queue, so show them queue mode
@@ -896,7 +1002,7 @@
                 break;
             case 'toolCallPending':
                 console.log('[TaskSync Webview] toolCallPending - showing question:', message.prompt?.substring(0, 50));
-                showPendingToolCall(message.id, message.prompt, message.isApprovalQuestion, message.choices);
+                showPendingToolCall(message.id, message.prompt, message.isApprovalQuestion, message.choices, message.context);
                 break;
             case 'toolCallCompleted':
                 addToolCallToCurrentSession(message.entry);
@@ -921,11 +1027,17 @@
                 break;
             case 'updateSettings':
                 soundEnabled = message.soundEnabled !== false;
+                desktopNotificationEnabled = message.desktopNotificationEnabled !== false;
+                autoFocusPanelEnabled = message.autoFocusPanelEnabled !== false;
+                mobileNotificationEnabled = message.mobileNotificationEnabled === true;
                 interactiveApprovalEnabled = message.interactiveApprovalEnabled !== false;
                 reusablePrompts = message.reusablePrompts || [];
                 instructionInjection = message.instructionInjection || 'off';
                 instructionText = message.instructionText || '';
                 updateSoundToggleUI();
+                updateDesktopNotificationToggleUI();
+                updateAutoFocusPanelToggleUI();
+                updateMobileNotificationToggleUI();
                 updateInteractiveApprovalToggleUI();
                 renderPromptsList();
                 updateInstructionUI();
@@ -983,9 +1095,9 @@
         }
     }
 
-    function showPendingToolCall(id, prompt, isApproval, choices) {
+    function showPendingToolCall(id, prompt, isApproval, choices, context) {
         console.log('[TaskSync Webview] showPendingToolCall called with id:', id);
-        pendingToolCall = { id: id, prompt: prompt };
+        pendingToolCall = { id: id, prompt: prompt, context: context };
         isProcessingResponse = false; // AI is now asking, not processing
         isApprovalQuestion = isApproval === true;
         currentChoices = choices || [];
@@ -1000,11 +1112,19 @@
         // Add pending class to disable session switching UI
         document.body.classList.add('has-pending-toolcall');
 
-        // Show AI question as plain text (hide "Working...." since AI asked a question)
+        // Show AI context (full response) and question
         if (pendingMessage) {
             console.log('[TaskSync Webview] Setting pendingMessage innerHTML...');
             pendingMessage.classList.remove('hidden');
-            pendingMessage.innerHTML = '<div class="pending-ai-question">' + formatMarkdown(prompt) + '</div>';
+            var html = '';
+            if (context && context.trim()) {
+                html += '<div class="pending-ai-context">' +
+                    '<div class="context-label"><span class="codicon codicon-copilot"></span> AI Response</div>' +
+                    '<div class="context-content">' + formatMarkdown(context) + '</div>' +
+                    '</div>';
+            }
+            html += '<div class="pending-ai-question">' + formatMarkdown(prompt) + '</div>';
+            pendingMessage.innerHTML = html;
             console.log('[TaskSync Webview] pendingMessage.innerHTML set, length:', pendingMessage.innerHTML.length);
         } else {
             console.error('[TaskSync Webview] pendingMessage element is null!');
@@ -1131,6 +1251,7 @@
                 '</div>' +
                 '</div>' +
                 '<div class="tool-call-body">' +
+                (tc.context ? '<div class="tool-call-context"><div class="context-label"><span class="codicon codicon-copilot"></span> AI Response</div><div class="context-content">' + formatMarkdown(tc.context) + '</div></div>' : '') +
                 '<div class="tool-call-ai-response">' + formatMarkdown(tc.prompt) + '</div>' +
                 '<div class="tool-call-user-section">' +
                 '<div class="tool-call-user-response">' + escapeHtml(tc.response) + '</div>' +
@@ -1181,6 +1302,7 @@
                 '<button class="tool-call-remove" data-id="' + escapeHtml(tc.id) + '" title="Remove"><span class="codicon codicon-close"></span></button>' +
                 '</div>' +
                 '<div class="tool-call-body">' +
+                (tc.context ? '<div class="tool-call-context"><div class="context-label"><span class="codicon codicon-copilot"></span> AI Response</div><div class="context-content">' + formatMarkdown(tc.context) + '</div></div>' : '') +
                 '<div class="tool-call-ai-response">' + formatMarkdown(tc.prompt) + '</div>' +
                 '<div class="tool-call-user-section">' +
                 '<div class="tool-call-user-response">' + escapeHtml(tc.response) + '</div>' +
@@ -1844,6 +1966,42 @@
         if (!soundToggle) return;
         soundToggle.classList.toggle('active', soundEnabled);
         soundToggle.setAttribute('aria-checked', soundEnabled ? 'true' : 'false');
+    }
+
+    function toggleDesktopNotificationSetting() {
+        desktopNotificationEnabled = !desktopNotificationEnabled;
+        updateDesktopNotificationToggleUI();
+        vscode.postMessage({ type: 'updateDesktopNotificationSetting', enabled: desktopNotificationEnabled });
+    }
+
+    function updateDesktopNotificationToggleUI() {
+        if (!desktopNotificationToggle) return;
+        desktopNotificationToggle.classList.toggle('active', desktopNotificationEnabled);
+        desktopNotificationToggle.setAttribute('aria-checked', desktopNotificationEnabled ? 'true' : 'false');
+    }
+
+    function toggleAutoFocusPanelSetting() {
+        autoFocusPanelEnabled = !autoFocusPanelEnabled;
+        updateAutoFocusPanelToggleUI();
+        vscode.postMessage({ type: 'updateAutoFocusPanelSetting', enabled: autoFocusPanelEnabled });
+    }
+
+    function updateAutoFocusPanelToggleUI() {
+        if (!autoFocusPanelToggle) return;
+        autoFocusPanelToggle.classList.toggle('active', autoFocusPanelEnabled);
+        autoFocusPanelToggle.setAttribute('aria-checked', autoFocusPanelEnabled ? 'true' : 'false');
+    }
+
+    function toggleMobileNotificationSetting() {
+        mobileNotificationEnabled = !mobileNotificationEnabled;
+        updateMobileNotificationToggleUI();
+        vscode.postMessage({ type: 'updateMobileNotificationSetting', enabled: mobileNotificationEnabled });
+    }
+
+    function updateMobileNotificationToggleUI() {
+        if (!mobileNotificationToggle) return;
+        mobileNotificationToggle.classList.toggle('active', mobileNotificationEnabled);
+        mobileNotificationToggle.setAttribute('aria-checked', mobileNotificationEnabled ? 'true' : 'false');
     }
 
     function toggleInteractiveApprovalSetting() {
@@ -2526,20 +2684,47 @@
     function handlePaste(event) {
         if (!event.clipboardData) return;
         var items = event.clipboardData.items;
+        var files = event.clipboardData.files;
+        var hasImage = false;
+        var processedFiles = new Set();
+
+        // First pass: check DataTransferItemList (standard approach for screenshots)
         for (var i = 0; i < items.length; i++) {
             if (items[i].type.indexOf('image/') === 0) {
-                event.preventDefault();
+                hasImage = true;
                 var file = items[i].getAsFile();
-                if (file) processImageFile(file);
-                return;
+                if (file) {
+                    processedFiles.add(file.name + '_' + file.size);
+                    processImageFile(file);
+                }
             }
         }
+
+        // Second pass: check FileList (for multi-file paste from file managers)
+        // Some browsers/Electron provide copied image files through .files but not .items
+        if (files && files.length > 0) {
+            for (var j = 0; j < files.length; j++) {
+                var f = files[j];
+                if (f.type.indexOf('image/') === 0) {
+                    var fileKey = f.name + '_' + f.size;
+                    if (!processedFiles.has(fileKey)) {
+                        hasImage = true;
+                        processImageFile(f);
+                    }
+                }
+            }
+        }
+
+        if (hasImage) event.preventDefault();
     }
 
     function processImageFile(file) {
         var reader = new FileReader();
         reader.onload = function (e) {
             if (e.target && e.target.result) vscode.postMessage({ type: 'saveImage', data: e.target.result, mimeType: file.type });
+        };
+        reader.onerror = function () {
+            console.error('[TaskSync] Failed to read image file:', file.name);
         };
         reader.readAsDataURL(file);
     }

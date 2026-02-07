@@ -2512,6 +2512,44 @@ self.addEventListener('fetch', event => {
             if (saved) vscodeState = JSON.parse(saved);
         } catch (e) {}
         
+        // Mobile notification support
+        window.mobileNotificationEnabled = false;
+        
+        function requestNotificationPermission() {
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission().then(function(permission) {
+                    console.log('[TaskSync] Notification permission:', permission);
+                });
+            }
+        }
+        
+        function showMobileNotification(prompt) {
+            if (!('Notification' in window)) return;
+            if (Notification.permission !== 'granted') return;
+            if (document.hasFocus()) return; // Don't notify if tab is focused
+            
+            var preview = prompt.length > 100 ? prompt.substring(0, 97) + '...' : prompt;
+            try {
+                var notification = new Notification('TaskSync', {
+                    body: preview,
+                    icon: '/favicon.ico',
+                    tag: 'tasksync-pending', // Replace previous notification
+                    requireInteraction: true
+                });
+                notification.onclick = function() {
+                    window.focus();
+                    notification.close();
+                };
+                // Auto-close after 30 seconds
+                setTimeout(function() { notification.close(); }, 30000);
+            } catch (e) {
+                console.error('[TaskSync] Notification error:', e);
+            }
+        }
+        
+        // Make showMobileNotification globally accessible
+        window.showMobileNotification = showMobileNotification;
+        
         // Connection status UI
         const statusEl = document.getElementById('connection-status');
         
@@ -2649,12 +2687,18 @@ self.addEventListener('fetch', event => {
                     }
                     if (state.settings) {
                         window.dispatchVSCodeMessage({ type: 'updateSettings', ...state.settings });
+                        // Sync mobile notification flag for browser notifications
+                        window.mobileNotificationEnabled = state.settings.mobileNotificationEnabled === true;
+                        if (window.mobileNotificationEnabled) {
+                            requestNotificationPermission();
+                        }
                     }
                     if (state.pendingRequest) {
                         window.dispatchVSCodeMessage({
                             type: 'toolCallPending',
                             id: state.pendingRequest.id,
                             prompt: state.pendingRequest.prompt,
+                            context: state.pendingRequest.context,
                             isApprovalQuestion: state.pendingRequest.isApprovalQuestion,
                             choices: state.pendingRequest.choices
                         });
@@ -2666,6 +2710,17 @@ self.addEventListener('fetch', event => {
                 console.log('[TaskSync] Received message:', message.type);
                 if (window.dispatchVSCodeMessage) {
                     window.dispatchVSCodeMessage(message);
+                }
+                // Trigger mobile browser notification for toolCallPending
+                if (message.type === 'toolCallPending' && window.mobileNotificationEnabled) {
+                    showMobileNotification(message.prompt);
+                }
+                // Sync mobile notification flag when settings change
+                if (message.type === 'updateSettings') {
+                    window.mobileNotificationEnabled = message.mobileNotificationEnabled === true;
+                    if (window.mobileNotificationEnabled) {
+                        requestNotificationPermission();
+                    }
                 }
             });
             

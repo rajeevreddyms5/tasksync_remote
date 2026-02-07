@@ -5,6 +5,7 @@ import { getImageMimeType } from './utils/imageUtils';
 
 export interface Input {
     question: string;
+    context?: string;
     choices?: Array<{ label: string; value: string }>;
 }
 
@@ -67,7 +68,7 @@ export async function askUser(
     try {
         // Race the user response against cancellation
         const result = await Promise.race([
-            provider.waitForUserResponse(params.question, params.choices),
+            provider.waitForUserResponse(params.question, params.choices, params.context),
             cancellation.promise
         ]);
 
@@ -84,6 +85,11 @@ export async function askUser(
 
         // Process attachments to resolve context content
         if (result.attachments && result.attachments.length > 0) {
+            // When user submits only attachments without typing text, add a descriptive header
+            // so the AI model doesn't think the response is empty
+            if (!responseText.trim()) {
+                responseText = '(User attached the following files/context without additional text)';
+            }
             for (const att of result.attachments) {
                 if (att.uri.startsWith('context://')) {
                     // Start of context content
@@ -99,8 +105,30 @@ export async function askUser(
                     // End of context content
                     responseText += '\n[End of Context]\n';
                 } else {
-                    // Regular file attachment
-                    validAttachments.push(att.uri);
+                    // Regular file attachment - check if image or text
+                    try {
+                        const fileUri = vscode.Uri.parse(att.uri);
+                        const filePath = fileUri.fsPath;
+                        const mimeType = getImageMimeType(filePath);
+
+                        if (mimeType !== 'application/octet-stream') {
+                            // Image file → pass through for LanguageModelDataPart
+                            validAttachments.push(att.uri);
+                        } else {
+                            // Non-image file → read content and include as text
+                            const stats = await fs.promises.stat(filePath);
+                            if (stats.size > 500 * 1024) {
+                                responseText += `\n\n[Attached File: ${att.name}] (File too large: ${(stats.size / 1024).toFixed(1)}KB, max 500KB for text inclusion)\n`;
+                            } else {
+                                const fileContent = await fs.promises.readFile(filePath, 'utf-8');
+                                responseText += `\n\n[Attached File: ${att.name}]\n`;
+                                responseText += '```\n' + fileContent + '\n```';
+                                responseText += '\n[End of File]\n';
+                            }
+                        }
+                    } catch (err) {
+                        responseText += `\n\n[Attached File: ${att.name}] (Error: could not read file)\n`;
+                    }
                 }
             }
         }

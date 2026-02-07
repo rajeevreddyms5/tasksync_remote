@@ -347,6 +347,106 @@ body {
     display: block;
 }
 
+/* AI Context / Full Response Section (shown above the follow-up question) */
+.pending-ai-context,
+.tool-call-context {
+    margin-bottom: 8px;
+    padding: 8px;
+    background: var(--vscode-textBlockQuote-background, rgba(127, 127, 127, 0.1));
+    border-left: 3px solid var(--vscode-textLink-foreground, #3794ff);
+    border-radius: 4px;
+}
+
+.context-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--vscode-textLink-foreground, #3794ff);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.context-label .codicon {
+    font-size: 12px;
+}
+
+.context-content {
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--vscode-foreground);
+    word-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.context-content p {
+    margin: 0 0 4px 0;
+}
+
+.context-content p:last-child {
+    margin-bottom: 0;
+}
+
+.context-content h1,
+.context-content h2,
+.context-content h3,
+.context-content h4,
+.context-content h5,
+.context-content h6 {
+    margin: 6px 0 4px 0;
+    font-weight: 600;
+    color: var(--vscode-foreground);
+}
+
+.context-content h1 { font-size: 14px; }
+.context-content h2 { font-size: 13px; }
+.context-content h3 { font-size: 12px; }
+.context-content h4,
+.context-content h5,
+.context-content h6 { font-size: 11px; }
+
+.context-content ul,
+.context-content ol {
+    padding-left: 16px;
+    margin: 4px 0;
+}
+
+.context-content li {
+    margin: 2px 0;
+    font-size: 11px;
+}
+
+.context-content code {
+    background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.15));
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-family: var(--vscode-editor-font-family);
+}
+
+.context-content pre {
+    background: var(--vscode-textCodeBlock-background, rgba(127, 127, 127, 0.15));
+    padding: 6px 8px;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin: 4px 0;
+}
+
+.context-content pre code {
+    background: none;
+    padding: 0;
+}
+
+.context-content blockquote {
+    border-left: 2px solid var(--vscode-textBlockQuote-border, rgba(127, 127, 127, 0.3));
+    padding-left: 8px;
+    margin: 4px 0;
+    opacity: 0.85;
+}
+
 .tool-call-ai-response {
     font-size: 11px;
     line-height: 1.35;

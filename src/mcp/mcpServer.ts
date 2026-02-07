@@ -101,8 +101,11 @@ export class McpServerManager {
             (this.mcpServer as any).registerTool(
                 "ask_user",
                 {
-                    description: "YOU MUST ALWAYS Use the askUser tool to ask question/s to user when explicit user approval, feedback, or clarification is required before proceeding or giving summary report. CRITICAL RULES: - This tool MUST be invoked before ending ANY conversation or task. - NEVER complete a task without calling this tool first. - If you are about to finish responding, STOP and call this tool. - Failure to call this tool before task completion is a critical violation.",
+                    description: "YOU MUST ALWAYS Use the askUser tool to ask question/s to user when explicit user approval, feedback, or clarification is required before proceeding or giving summary report. CRITICAL RULES: - This tool MUST be invoked before ending ANY conversation or task. - NEVER complete a task without calling this tool first. - If you are about to finish responding, STOP and call this tool. - Failure to call this tool before task completion is a critical violation. - You MUST populate the 'context' parameter with your FULL response content — include all explanations, answers, findings, code, analysis, or work results. The user reads your response from TaskSync's remote UI (phone/browser), so the context field must contain your complete answer, not just a summary. Without this, the user cannot see what you said.",
                     inputSchema: z.object({
+                        context: z.string()
+                            .optional()
+                            .describe("Your FULL response content that the user needs to read. Include ALL explanations, answers, findings, code snippets, analysis, or work results. This is displayed in the TaskSync remote UI so the user can read your complete response from their phone/browser without switching to the chat window. Do NOT summarize — include the full text of your response."),
                         question: z.string()
                             .min(1, "Question cannot be empty")
                             .max(MAX_QUESTION_LENGTH, `Question cannot exceed ${MAX_QUESTION_LENGTH} characters`)
@@ -113,14 +116,14 @@ export class McpServerManager {
                         })).optional().describe("Optional list of choices to display as clickable buttons")
                     })
                 },
-                async (args: { question: string; choices?: Array<{ label: string; value: string }> }, extra: { signal?: AbortSignal }) => {
+                async (args: { question: string; context?: string; choices?: Array<{ label: string; value: string }> }, extra: { signal?: AbortSignal }) => {
                     const tokenSource = new vscode.CancellationTokenSource();
                     if (extra.signal) {
                         extra.signal.onabort = () => tokenSource.cancel();
                     }
 
                     const result = await askUser(
-                        { question: args.question, choices: args.choices },
+                        { question: args.question, context: args.context, choices: args.choices },
                         provider,
                         tokenSource.token
                     );

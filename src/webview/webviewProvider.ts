@@ -45,6 +45,7 @@ export interface UserResponseResult {
 export interface ToolCallEntry {
     id: string;
     prompt: string;
+    context?: string;   // AI's full response content (answer, explanation, work done)
     response: string;
     timestamp: number;
     isFromQueue: boolean;
@@ -69,7 +70,7 @@ export interface ReusablePrompt {
 // Message types
 type ToWebviewMessage =
     | { type: 'updateQueue'; queue: QueuedPrompt[]; enabled: boolean }
-    | { type: 'toolCallPending'; id: string; prompt: string; isApprovalQuestion: boolean; choices?: ParsedChoice[] }
+    | { type: 'toolCallPending'; id: string; prompt: string; context?: string; isApprovalQuestion: boolean; choices?: ParsedChoice[] }
     | { type: 'toolCallCompleted'; entry: ToolCallEntry }
     | { type: 'updateCurrentSession'; history: ToolCallEntry[] }
     | { type: 'updatePersistedHistory'; history: ToolCallEntry[] }
@@ -77,7 +78,7 @@ type ToWebviewMessage =
     | { type: 'updateAttachments'; attachments: AttachmentInfo[] }
     | { type: 'imageSaved'; attachment: AttachmentInfo }
     | { type: 'openSettingsModal' }
-    | { type: 'updateSettings'; soundEnabled: boolean; interactiveApprovalEnabled: boolean; reusablePrompts: ReusablePrompt[]; instructionInjection: string; instructionText: string }
+    | { type: 'updateSettings'; soundEnabled: boolean; desktopNotificationEnabled: boolean; autoFocusPanelEnabled: boolean; mobileNotificationEnabled: boolean; interactiveApprovalEnabled: boolean; reusablePrompts: ReusablePrompt[]; instructionInjection: string; instructionText: string }
     | { type: 'slashCommandResults'; prompts: ReusablePrompt[] }
     | { type: 'playNotificationSound' }
     | { type: 'clearProcessing' }  // Clear "Processing your response" state
@@ -101,11 +102,15 @@ type FromWebviewMessage =
     | { type: 'openHistoryModal' }
     | { type: 'searchFiles'; query: string }
     | { type: 'saveImage'; data: string; mimeType: string }
+    | { type: 'saveImageFromUri'; uri: string }
     | { type: 'addFileReference'; file: FileSearchResult }
     | { type: 'webviewReady' }
     | { type: 'openSettingsModal' }
     | { type: 'updateSoundSetting'; enabled: boolean }
     | { type: 'updateInteractiveApprovalSetting'; enabled: boolean }
+    | { type: 'updateDesktopNotificationSetting'; enabled: boolean }
+    | { type: 'updateAutoFocusPanelSetting'; enabled: boolean }
+    | { type: 'updateMobileNotificationSetting'; enabled: boolean }
     | { type: 'addReusablePrompt'; name: string; prompt: string }
     | { type: 'editReusablePrompt'; id: string; name: string; prompt: string }
     | { type: 'removeReusablePrompt'; id: string }
@@ -173,6 +178,15 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     // Notification sound enabled (loaded from VS Code settings)
     private _soundEnabled: boolean = true;
+
+    // Desktop notification enabled (VS Code info message popup)
+    private _desktopNotificationEnabled: boolean = true;
+
+    // Auto-focus panel when AI calls ask_user
+    private _autoFocusPanelEnabled: boolean = true;
+
+    // Mobile browser notification for remote clients
+    private _mobileNotificationEnabled: boolean = false;
 
     // Interactive approval buttons enabled (loaded from VS Code settings)
     private _interactiveApprovalEnabled: boolean = true;
@@ -413,6 +427,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _loadSettings(): void {
         const config = vscode.workspace.getConfiguration('tasksync');
         this._soundEnabled = config.get<boolean>('notificationSound', true);
+        this._desktopNotificationEnabled = config.get<boolean>('desktopNotification', true);
+        this._autoFocusPanelEnabled = config.get<boolean>('autoFocusPanel', true);
+        this._mobileNotificationEnabled = config.get<boolean>('mobileNotification', false);
         this._interactiveApprovalEnabled = config.get<boolean>('interactiveApproval', true);
         this._instructionInjection = config.get<string>('instructionInjection', 'off');
         this._instructionText = config.get<string>('instructionText', '');
@@ -450,6 +467,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._postMessage({
             type: 'updateSettings',
             soundEnabled: this._soundEnabled,
+            desktopNotificationEnabled: this._desktopNotificationEnabled,
+            autoFocusPanelEnabled: this._autoFocusPanelEnabled,
+            mobileNotificationEnabled: this._mobileNotificationEnabled,
             interactiveApprovalEnabled: this._interactiveApprovalEnabled,
             reusablePrompts: this._reusablePrompts,
             instructionInjection: this._instructionInjection,
@@ -587,7 +607,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         queueEnabled: boolean;
         currentSession: ToolCallEntry[];
         persistedHistory: ToolCallEntry[];
-        pendingRequest: { id: string; prompt: string; isApprovalQuestion: boolean; choices?: ParsedChoice[] } | null;
+        pendingRequest: { id: string; prompt: string; context?: string; isApprovalQuestion: boolean; choices?: ParsedChoice[] } | null;
         settings: { soundEnabled: boolean; interactiveApprovalEnabled: boolean; reusablePrompts: ReusablePrompt[] };
     } {
         // Find pending entry if there's an active request
@@ -600,6 +620,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 pendingRequest = {
                     id: this._currentToolCallId,
                     prompt: pendingEntry.prompt,
+                    context: pendingEntry.context,
                     isApprovalQuestion: isApproval,
                     choices: choices.length > 0 ? choices : undefined
                 };
@@ -614,6 +635,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             pendingRequest,
             settings: {
                 soundEnabled: this._soundEnabled,
+                desktopNotificationEnabled: this._desktopNotificationEnabled,
+                autoFocusPanelEnabled: this._autoFocusPanelEnabled,
+                mobileNotificationEnabled: this._mobileNotificationEnabled,
                 interactiveApprovalEnabled: this._interactiveApprovalEnabled,
                 reusablePrompts: this._reusablePrompts
             }
@@ -687,7 +711,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     /**
      * Wait for user response
      */
-    public async waitForUserResponse(question: string, explicitChoices?: Array<{ label: string; value: string }>): Promise<UserResponseResult> {
+    public async waitForUserResponse(question: string, explicitChoices?: Array<{ label: string; value: string }>, context?: string): Promise<UserResponseResult> {
         // If view is not available, open the sidebar first
         if (!this._view) {
             // Open the TaskSync sidebar view
@@ -746,6 +770,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 const entry: ToolCallEntry = {
                     id: toolCallId,
                     prompt: question,
+                    context: context,
                     response: queuedPrompt.prompt,
                     timestamp: Date.now(),
                     isFromQueue: true,
@@ -764,12 +789,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             }
         }
 
-        this._view.show(true);
+        this._view.show(this._autoFocusPanelEnabled);
 
         // Add pending entry to current session (so we have the prompt when completing)
         const pendingEntry: ToolCallEntry = {
             id: toolCallId,
             prompt: question,
+            context: context,
             response: '',
             timestamp: Date.now(),
             isFromQueue: false,
@@ -811,6 +837,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             type: 'toolCallPending' as const,
             id: toolCallId,
             prompt: question,
+            context: context,
             isApprovalQuestion: isApproval,
             choices: choices.length > 0 ? choices : undefined
         };
@@ -820,6 +847,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             this._view.webview.postMessage(toolCallMessage);
             // Play notification sound when AI triggers ask_user
             this.playNotificationSound();
+            // Show VS Code desktop notification if enabled
+            this._showDesktopNotification(question);
         } else {
             // Fallback: queue the message for when webview becomes ready
             this._pendingToolCallMessage = { id: toolCallId, prompt: question, explicitChoices: choices.length > 0 && explicitChoices ? choices : undefined };
@@ -894,6 +923,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             case 'saveImage':
                 this._handleSaveImage(message.data, message.mimeType);
                 break;
+            case 'saveImageFromUri':
+                this._handleSaveImageFromUri(message.uri);
+                break;
             case 'addFileReference':
                 this._handleAddFileReference(message.file);
                 break;
@@ -908,6 +940,15 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'updateInteractiveApprovalSetting':
                 this._handleUpdateInteractiveApprovalSetting(message.enabled);
+                break;
+            case 'updateDesktopNotificationSetting':
+                this._handleUpdateDesktopNotificationSetting(message.enabled);
+                break;
+            case 'updateAutoFocusPanelSetting':
+                this._handleUpdateAutoFocusPanelSetting(message.enabled);
+                break;
+            case 'updateMobileNotificationSetting':
+                this._handleUpdateMobileNotificationSetting(message.enabled);
                 break;
             case 'addReusablePrompt':
                 this._handleAddReusablePrompt(message.name, message.prompt);
@@ -1378,6 +1419,51 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
+     * Handle saving image from a file URI (drag-and-drop from VS Code Explorer or URI-based drops)
+     */
+    private async _handleSaveImageFromUri(uri: string): Promise<void> {
+        try {
+            // Parse the URI to get the file path
+            let filePath: string;
+            if (uri.startsWith('file://')) {
+                filePath = vscode.Uri.parse(uri).fsPath;
+            } else {
+                // Might be a plain path
+                filePath = uri;
+            }
+
+            // Validate the file exists
+            if (!fs.existsSync(filePath)) {
+                console.error('[TaskSync] Dropped image file does not exist:', filePath);
+                return;
+            }
+
+            // Validate it's an image by checking extension
+            const ext = path.extname(filePath).toLowerCase().replace('.', '');
+            const validExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
+            if (!validExtensions.includes(ext)) {
+                console.error('[TaskSync] Dropped file is not an image:', filePath);
+                return;
+            }
+
+            // Read the file and convert to data URL for processing through existing pipeline
+            const fileBuffer = await fs.promises.readFile(filePath);
+            const mimeMap: Record<string, string> = {
+                'png': 'image/png', 'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+                'gif': 'image/gif', 'webp': 'image/webp', 'bmp': 'image/bmp', 'svg': 'image/svg+xml'
+            };
+            const mimeType = mimeMap[ext] || 'image/png';
+            const base64 = fileBuffer.toString('base64');
+            const dataUrl = `data:${mimeType};base64,${base64}`;
+
+            // Process through existing _handleSaveImage pipeline
+            await this._handleSaveImage(dataUrl, mimeType);
+        } catch (error) {
+            console.error('[TaskSync] Failed to save dropped image from URI:', error);
+        }
+    }
+
+    /**
      * Handle adding file reference from autocomplete
      */
     private _handleAddFileReference(file: FileSearchResult): void {
@@ -1631,6 +1717,71 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         } finally {
             this._isUpdatingConfig = false;
         }
+    }
+
+    /**
+     * Handle updating desktop notification setting
+     */
+    private async _handleUpdateDesktopNotificationSetting(enabled: boolean): Promise<void> {
+        this._desktopNotificationEnabled = enabled;
+        this._isUpdatingConfig = true;
+        try {
+            const config = vscode.workspace.getConfiguration('tasksync');
+            await config.update('desktopNotification', enabled, vscode.ConfigurationTarget.Global);
+            this._loadSettings();
+            this._updateSettingsUI();
+        } finally {
+            this._isUpdatingConfig = false;
+        }
+    }
+
+    /**
+     * Handle updating auto-focus panel setting
+     */
+    private async _handleUpdateAutoFocusPanelSetting(enabled: boolean): Promise<void> {
+        this._autoFocusPanelEnabled = enabled;
+        this._isUpdatingConfig = true;
+        try {
+            const config = vscode.workspace.getConfiguration('tasksync');
+            await config.update('autoFocusPanel', enabled, vscode.ConfigurationTarget.Global);
+            this._loadSettings();
+            this._updateSettingsUI();
+        } finally {
+            this._isUpdatingConfig = false;
+        }
+    }
+
+    /**
+     * Handle updating mobile notification setting
+     */
+    private async _handleUpdateMobileNotificationSetting(enabled: boolean): Promise<void> {
+        this._mobileNotificationEnabled = enabled;
+        this._isUpdatingConfig = true;
+        try {
+            const config = vscode.workspace.getConfiguration('tasksync');
+            await config.update('mobileNotification', enabled, vscode.ConfigurationTarget.Global);
+            this._loadSettings();
+            this._updateSettingsUI();
+        } finally {
+            this._isUpdatingConfig = false;
+        }
+    }
+
+    /**
+     * Show VS Code desktop notification when AI calls ask_user
+     */
+    private _showDesktopNotification(question: string): void {
+        if (!this._desktopNotificationEnabled) return;
+
+        const preview = question.length > 100 ? question.substring(0, 97) + '...' : question;
+        vscode.window.showInformationMessage(
+            `TaskSync: ${preview}`,
+            'Open TaskSync'
+        ).then(action => {
+            if (action === 'Open TaskSync' && this._view) {
+                this._view.show(true);
+            }
+        });
     }
 
     /**
@@ -2399,7 +2550,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         // Pattern 2b: Inline lettered "A. option B. option C. option"
         // Only match single uppercase letters to avoid false positives
-        const inlineLetteredPattern = /\b([A-Z])[.)]\s+([^A-Z]+?)(?=\s+[A-Z][.)]|$)/g;
+        // Use .+? (not [^A-Z]+?) so option text starting with uppercase letters (e.g., "Apple") is matched
+        const inlineLetteredPattern = /\b([A-Z])[.)]\s+(.+?)(?=\s+[A-Z][.)]|$)/g;
         const inlineLetteredMatches: { letter: string; text: string }[] = [];
 
         while ((match = inlineLetteredPattern.exec(singleLine)) !== null) {
