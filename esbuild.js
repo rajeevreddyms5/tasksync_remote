@@ -1,8 +1,23 @@
 const esbuild = require('esbuild');
+const fs = require('fs');
+const path = require('path');
 
 const watch = process.argv.includes('--watch');
 
+// Verify runtime dependencies exist (these are external and must be in node_modules for the VSIX)
+const requiredRuntimeDeps = ['socket.io', 'engine.io', 'ws', 'express'];
+
 async function main() {
+    // Pre-build check: ensure external deps are installed
+    for (const dep of requiredRuntimeDeps) {
+        const depPath = path.join(__dirname, 'node_modules', dep);
+        if (!fs.existsSync(depPath)) {
+            console.error(`\x1b[31mERROR: Missing runtime dependency "${dep}" in node_modules.\x1b[0m`);
+            console.error('Run "npm install" before building.');
+            process.exit(1);
+        }
+    }
+
     const ctx = await esbuild.context({
         entryPoints: ['src/extension.ts'],
         bundle: true,
