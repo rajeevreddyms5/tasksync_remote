@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
-import { PlanReviewPanel } from './planReviewPanel';
-import { PlanReviewInput, PlanReviewToolResult, PlanReviewOptions } from './types';
+import { PlanReviewInput, PlanReviewToolResult, PlanReviewPanelResult } from './types';
 import { TaskSyncWebviewProvider } from '../webview/webviewProvider';
 
 /**
@@ -11,9 +10,29 @@ function generateReviewId(): string {
 }
 
 /**
+ * Pending plan review promises — resolved when the sidebar/remote modal submits a response.
+ * This replaces the old PlanReviewPanel approach which opened a separate editor tab.
+ */
+const pendingReviews: Map<string, (result: PlanReviewPanelResult) => void> = new Map();
+
+/**
+ * Resolve a pending plan review from the sidebar or remote client.
+ * Called by webviewProvider._handlePlanReviewResponse().
+ */
+export function resolvePlanReview(reviewId: string, result: PlanReviewPanelResult): boolean {
+    const resolve = pendingReviews.get(reviewId);
+    if (resolve) {
+        resolve(result);
+        pendingReviews.delete(reviewId);
+        return true;
+    }
+    return false;
+}
+
+/**
  * Core logic for plan review.
- * Opens a dedicated webview panel where the user can review the plan,
- * add comments, and approve or request changes.
+ * Broadcasts plan to sidebar/remote modal and waits for user action.
+ * No dedicated editor panel is opened — the sidebar modal is the primary UI.
  */
 export async function planReview(
     params: PlanReviewInput,
@@ -32,28 +51,31 @@ export async function planReview(
 
     // Set up cancellation handling
     const cancellationDisposable = token.onCancellationRequested(() => {
-        console.log('[TaskSync] planReview cancelled by agent, closing:', reviewId);
-        PlanReviewPanel.closeIfOpen(reviewId);
+        console.log('[TaskSync] planReview cancelled by agent:', reviewId);
+        // Clean up pending review
+        const resolve = pendingReviews.get(reviewId);
+        if (resolve) {
+            resolve({ action: 'closed', requiredRevisions: [] });
+            pendingReviews.delete(reviewId);
+        }
+        // Broadcast completion to dismiss remote modals
+        if (webviewProvider) {
+            webviewProvider.broadcastPlanReviewCompleted(reviewId, 'cancelled');
+        }
     });
 
     try {
-        const options: PlanReviewOptions = {
-            plan,
-            title,
-            readOnly: false,
-            existingComments: [],
-            interactionId: reviewId
-        };
-
-        // Broadcast plan review pending to remote clients
+        // Broadcast plan review to sidebar and remote clients
         if (webviewProvider) {
             webviewProvider.broadcastPlanReview(reviewId, title, plan);
         }
 
-        // Show the plan review panel and wait for user action
-        const result = await PlanReviewPanel.showWithOptions(extensionUri, options);
+        // Wait for response from sidebar/remote modal
+        const result = await new Promise<PlanReviewPanelResult>((resolve) => {
+            pendingReviews.set(reviewId, resolve);
+        });
 
-        // Map panel action to tool result status
+        // Map action to tool result status
         const status: PlanReviewToolResult['status'] = [
             'approved',
             'approvedWithComments',
@@ -74,14 +96,14 @@ export async function planReview(
             webviewProvider.recordPlanReview(reviewId, title, status, plan, result.requiredRevisions);
         }
 
-        // Broadcast completion to remote clients
+        // Broadcast completion to dismiss remote modals
         if (webviewProvider) {
             webviewProvider.broadcastPlanReviewCompleted(reviewId, status);
         }
 
         return toolResult;
     } catch (error) {
-        console.error('[TaskSync] Error showing plan review panel:', error);
+        console.error('[TaskSync] Error in plan review:', error);
         return {
             status: 'cancelled',
             requiredRevisions: [],
@@ -89,6 +111,7 @@ export async function planReview(
         };
     } finally {
         cancellationDisposable.dispose();
+        pendingReviews.delete(reviewId); // Clean up in case of error
     }
 }
 

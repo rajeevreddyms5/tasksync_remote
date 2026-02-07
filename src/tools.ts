@@ -138,8 +138,9 @@ export async function askUser(
             attachments: validAttachments
         };
     } catch (error) {
-        // Re-throw cancellation errors without logging (they're expected)
+        // Handle cancellation: clean up pending state in provider before re-throwing
         if (error instanceof vscode.CancellationError) {
+            provider.cancelPendingRequest();
             throw error;
         }
         // Log other errors

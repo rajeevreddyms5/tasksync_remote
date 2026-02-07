@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { FILE_EXCLUSION_PATTERNS, FILE_SEARCH_EXCLUSION_PATTERNS, formatExcludePattern } from '../constants/fileExclusions';
 import { ContextManager, ContextReferenceType, ContextReference } from '../context';
-import { PlanReviewPanel } from '../planReview/planReviewPanel';
+import { resolvePlanReview } from '../planReview/index';
 import { PlanReviewPanelResult } from '../planReview/types';
 
 // Queued prompt interface
@@ -78,9 +78,11 @@ type ToWebviewMessage =
     | { type: 'updateAttachments'; attachments: AttachmentInfo[] }
     | { type: 'imageSaved'; attachment: AttachmentInfo }
     | { type: 'openSettingsModal' }
+    | { type: 'openPromptsModal' }
     | { type: 'updateSettings'; soundEnabled: boolean; desktopNotificationEnabled: boolean; autoFocusPanelEnabled: boolean; mobileNotificationEnabled: boolean; interactiveApprovalEnabled: boolean; reusablePrompts: ReusablePrompt[]; instructionInjection: string; instructionText: string }
     | { type: 'slashCommandResults'; prompts: ReusablePrompt[] }
     | { type: 'playNotificationSound' }
+    | { type: 'toolCallCancelled'; id: string }  // AI/user cancelled the pending tool call (e.g. Copilot Stop button)
     | { type: 'clearProcessing' }  // Clear "Processing your response" state
     | { type: 'contextSearchResults'; suggestions: Array<{ type: string; label: string; description: string; detail: string }> }
     | { type: 'contextReferenceAdded'; reference: { id: string; type: string; label: string; content: string } }
@@ -288,6 +290,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
+     * Open prompts modal (called from view title bar button)
+     */
+    public openPromptsModal(): void {
+        this._view?.webview.postMessage({ type: 'openPromptsModal' } as ToWebviewMessage);
+        this._updateSettingsUI(); // Ensure prompts list is fresh
+    }
+
+    /**
      * Clear current session tool calls (called from view title bar button)
      * Preserves any pending tool call entry so responses don't lose their prompt
      * Cleans up temporary images associated with cleared entries
@@ -334,7 +344,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         const entry: ToolCallEntry = {
             id: reviewId,
-            prompt: `[Plan Review] ${title}\n\n${plan.substring(0, 500)}${plan.length > 500 ? '...' : ''}`,
+            prompt: `[Plan Review] ${title}`,
+            context: plan,
             response: responseSummary,
             timestamp: Date.now(),
             isFromQueue: false,
@@ -545,6 +556,52 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      */
     public hasPendingRequest(): boolean {
         return this._currentToolCallId !== null && this._pendingRequests.has(this._currentToolCallId);
+    }
+
+    /**
+     * Cancel the current pending request (e.g. when Copilot Stop button is clicked).
+     * Cleans up pending state, updates session history, and notifies webview + remote clients.
+     */
+    public cancelPendingRequest(): void {
+        if (!this._currentToolCallId) {
+            return;
+        }
+        const toolCallId = this._currentToolCallId;
+        const resolve = this._pendingRequests.get(toolCallId);
+
+        // Update session entry to cancelled
+        const pendingEntry = this._currentSessionCallsMap.get(toolCallId);
+        if (pendingEntry && pendingEntry.status === 'pending') {
+            pendingEntry.status = 'cancelled';
+            pendingEntry.response = '[Cancelled by user (Stop button)]';
+            pendingEntry.timestamp = Date.now();
+        }
+
+        // Resolve the orphaned promise so it doesn't leak
+        if (resolve) {
+            resolve({
+                value: '[CANCELLED: User clicked Stop]',
+                queue: false,
+                attachments: [],
+                cancelled: true
+            });
+            this._pendingRequests.delete(toolCallId);
+        }
+
+        // Clear current tool call ID
+        this._currentToolCallId = null;
+
+        // Notify webview + remote clients to dismiss the pending UI
+        // (_postMessage handles both local webview and remote broadcast)
+        this._postMessage({ type: 'toolCallCancelled' as const, id: toolCallId });
+
+        // Clear any processing state
+        this._setProcessingState(false);
+
+        // Update session UI to reflect the cancelled entry
+        this._updateCurrentSessionUI();
+
+        console.log(`[TaskSync] Pending request ${toolCallId} cancelled (Stop button)`);
     }
 
     /**
@@ -1866,9 +1923,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             requiredRevisions: revisions
         };
 
-        const resolved = PlanReviewPanel.resolveExternally(reviewId, result);
+        const resolved = resolvePlanReview(reviewId, result);
         if (resolved) {
-            console.log('[TaskSync] Plan review resolved remotely:', reviewId, action);
+            console.log('[TaskSync] Plan review resolved:', reviewId, action);
         }
     }
 

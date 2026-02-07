@@ -2499,7 +2499,7 @@ button#send-btn:disabled {
 .plan-review-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.6);
     z-index: 2000;
     display: flex;
     align-items: center;
@@ -2510,19 +2510,20 @@ button#send-btn:disabled {
     background: var(--vscode-editor-background);
     border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, rgba(128,128,128,0.3)));
     border-radius: 8px;
-    width: min(95vw, 700px);
-    max-height: 90vh;
+    width: min(96vw, 900px);
+    max-height: 92vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
 .plan-review-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 16px;
+    padding: 10px 16px;
     border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
+    flex-shrink: 0;
 }
 
 .plan-review-title {
@@ -2542,14 +2543,40 @@ button#send-btn:disabled {
     color: var(--vscode-button-foreground, #fff);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
+
+.plan-review-close-btn {
+    background: none;
+    border: none;
+    color: var(--vscode-editor-foreground);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+
+.plan-review-close-btn:hover {
+    opacity: 1;
+    background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.1));
+}
+
+/* Horizontal split: plan left, comments right */
+.plan-review-content {
+    flex: 1;
+    display: flex;
+    flex-direction: row;
+    overflow: hidden;
+    min-height: 0;
 }
 
 .plan-review-body {
-    flex: 1;
+    flex: 7;
     overflow-y: auto;
     padding: 16px;
     line-height: 1.6;
-    max-height: 40vh;
+    border-right: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
 }
 
 .plan-review-body h1, .plan-review-body h2, .plan-review-body h3 {
@@ -2560,20 +2587,24 @@ button#send-btn:disabled {
 .plan-review-body p { margin: 4px 0; }
 .plan-review-body ul, .plan-review-body ol { padding-left: 20px; }
 
-.plan-review-comments {
-    border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
-    padding: 10px 16px;
-    max-height: 200px;
-    overflow-y: auto;
+/* Right sidebar for comments */
+.plan-review-sidebar {
+    flex: 3;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 200px;
 }
 
 .plan-review-comments-header {
     font-weight: 600;
     font-size: 12px;
-    margin-bottom: 6px;
+    padding: 10px 12px;
     display: flex;
     align-items: center;
     gap: 6px;
+    border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.2));
+    flex-shrink: 0;
 }
 
 .plan-review-comments-count {
@@ -2584,22 +2615,355 @@ button#send-btn:disabled {
     border-radius: 8px;
 }
 
+.plan-review-clear-all {
+    margin-left: auto;
+    font-size: 11px;
+    background: none;
+    border: none;
+    color: var(--vscode-textLink-foreground, #3794ff);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.plan-review-clear-all:hover {
+    background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.1));
+}
+
+.plan-review-clear-all.hidden {
+    display: none;
+}
+
+.plan-review-comments-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 12px;
+}
+
+.plan-review-no-comments {
+    font-size: 11px;
+    opacity: 0.5;
+    font-style: italic;
+    padding: 8px 0;
+}
+
 .plan-review-comment-item {
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
     border-radius: 4px;
-    padding: 6px 10px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+}
+
+.pr-comment-citation {
+    font-size: 11px;
+    opacity: 0.7;
+    font-style: italic;
+    border-left: 2px solid var(--vscode-textLink-foreground, #3794ff);
+    padding-left: 6px;
     margin-bottom: 4px;
+    max-height: 40px;
+    overflow: hidden;
+}
+
+.pr-comment-text {
+    font-size: 12px;
+}
+
+.pr-comment-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.pr-remove-comment {
+    font-size: 11px;
+    background: none;
+    border: none;
+    color: var(--vscode-textLink-foreground, #3794ff);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.pr-remove-comment:hover {
+    background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.1));
 }
 
 .plan-review-add-comment {
-    margin-top: 8px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.2));
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.plan-review-add-comment .form-input {
+    font-size: 12px;
+}
+
+/* Inline comment icons on plan sections */
+.pr-line-wrapper {
+    position: relative;
+    padding: 2px 0 2px 24px;
+    border-radius: 4px;
+    transition: background 0.15s;
+}
+
+.pr-line-wrapper:hover {
+    background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.08));
+}
+
+.pr-comment-icon {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0;
+    cursor: pointer;
+    background: none;
+    border: none;
+    color: var(--vscode-textLink-foreground, #3794ff);
+    padding: 2px;
+    border-radius: 3px;
+    transition: opacity 0.15s;
+    font-size: 14px;
+}
+
+.pr-line-wrapper:hover .pr-comment-icon {
+    opacity: 0.6;
+}
+
+.pr-comment-icon:hover {
+    opacity: 1 !important;
+    background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.15));
+}
+
+.pr-line-wrapper.has-comment {
+    background: rgba(255, 200, 0, 0.08);
+    border-left: 3px solid var(--vscode-textLink-foreground, #3794ff);
+    padding-left: 21px;
+}
+
+.pr-line-wrapper.has-comment .pr-comment-icon {
+    opacity: 1;
+    color: var(--vscode-textLink-foreground, #3794ff);
 }
 
 .plan-review-footer {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
     gap: 8px;
     padding: 10px 16px;
     border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
+    flex-shrink: 0;
 }
+
+.plan-review-footer-right {
+    display: flex;
+    gap: 8px;
+}
+
+/* Responsive: stack vertically on very narrow screens */
+@media (max-width: 500px) {
+    .plan-review-content {
+        flex-direction: column;
+    }
+    .plan-review-body {
+        border-right: none;
+        border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
+        max-height: 50vh;
+    }
+    .plan-review-sidebar {
+        min-width: unset;
+    }
+}
+
+/* ===== Prompts Modal ===== */
+.prompts-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.prompts-modal {
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, rgba(128,128,128,0.3)));
+    border-radius: 8px;
+    width: min(95vw, 560px);
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.prompts-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
+}
+
+.prompts-modal-title {
+    font-size: 14px;
+    font-weight: 600;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.prompts-modal-header-buttons {
+    display: flex;
+    gap: 4px;
+}
+
+.prompts-modal-header-btn {
+    background: none;
+    border: none;
+    color: var(--vscode-editor-foreground);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    opacity: 0.7;
+}
+
+.prompts-modal-header-btn:hover {
+    opacity: 1;
+    background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.1));
+}
+
+.prompts-modal-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+}
+
+.prompts-modal-hint {
+    font-size: 11px;
+    opacity: 0.6;
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+
+.prompts-modal-hint code {
+    background: var(--vscode-input-background);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+.prompts-modal-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.prompts-modal-empty {
+    text-align: center;
+    padding: 28px 16px;
+    opacity: 0.5;
+}
+
+.prompts-modal-empty .codicon {
+    font-size: 28px;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.prompts-modal-empty p {
+    margin: 4px 0;
+    font-size: 13px;
+}
+
+.prompts-modal-empty-hint {
+    font-size: 11px !important;
+    opacity: 0.7;
+    line-height: 1.5;
+}
+
+.prompt-card {
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
+    border-radius: 6px;
+    padding: 10px 12px;
+    transition: border-color 0.15s;
+}
+
+.prompt-card:hover {
+    border-color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.prompt-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.prompt-card-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.prompt-card-index {
+    font-size: 10px;
+    opacity: 0.4;
+}
+
+.prompt-card-text {
+    font-size: 12px;
+    line-height: 1.5;
+    opacity: 0.75;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 100px;
+    overflow: hidden;
+}
+
+.prompt-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.15));
+    padding-top: 6px;
+}
+
+.prompt-card-btn {
+    background: none;
+    border: none;
+    color: var(--vscode-editor-foreground);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    opacity: 0.6;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.prompt-card-btn:hover {
+    opacity: 1;
+    background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.1));
+}
+
+.prompts-modal-add-form {
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-textLink-foreground, #3794ff);
+    border-radius: 6px;
+}
+
+.prompts-modal-add-form .form-row { margin-bottom: 8px; }
+.prompts-modal-add-form .form-label { font-size: 12px; margin-bottom: 4px; display: block; }
+.prompts-modal-add-form .form-actions { display: flex; gap: 8px; justify-content: flex-end; }

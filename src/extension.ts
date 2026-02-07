@@ -185,6 +185,11 @@ export function activate(context: vscode.ExtensionContext) {
         provider.openSettingsModal();
     });
 
+    // Open prompts modal command (triggered from view title bar)
+    const openPromptsCmd = vscode.commands.registerCommand('tasksync.openPrompts', () => {
+        provider.openPromptsModal();
+    });
+
     // Initialize Remote Server
     remoteServer = new RemoteUiServer(context.extensionUri, context);
     context.subscriptions.push(remoteServer);
@@ -365,7 +370,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         startMcpCmd, restartMcpCmd, showMcpConfigCmd, 
-        openHistoryCmd, clearSessionCmd, openSettingsCmd,
+        openHistoryCmd, clearSessionCmd, openSettingsCmd, openPromptsCmd,
         toggleRemoteCmd, startRemoteCmd, stopRemoteCmd, showRemoteUrlCmd,
         remoteServer
     );

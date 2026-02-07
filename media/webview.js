@@ -74,6 +74,9 @@
     let instructionInjectionSelect, instructionTextArea, instructionTextSaveBtn, instructionInjectBtn, instructionRemoveBtn, instructionResetBtn, instructionStatus;
     let instructionInjection = 'off';
     let instructionText = '';
+    // Prompts modal elements
+    let promptsModal, promptsModalOverlay, promptsModalClose;
+    let promptsModalList, promptsModalAddBtn, promptsModalAddForm;
 
     function init() {
         try {
@@ -83,6 +86,7 @@
             createEditModeUI();
             createApprovalModal();
             createSettingsModal();
+            createPromptsModal();
             bindEventListeners();
             unlockAudioOnInteraction(); // Enable audio after first user interaction
             console.log('[TaskSync Webview] Event listeners bound, pendingMessage element:', !!pendingMessage);
@@ -389,7 +393,7 @@
             '</div>';
         modalContent.appendChild(approvalSection);
 
-        // Reusable Prompts section - plus button next to title
+        // Reusable Prompts section - compact link to dedicated modal
         var promptsSection = document.createElement('div');
         promptsSection.className = 'settings-section';
         promptsSection.innerHTML = '<div class="settings-section-header">' +
@@ -460,6 +464,86 @@
         instructionRemoveBtn = document.getElementById('instruction-remove-btn');
         instructionResetBtn = document.getElementById('instruction-reset-btn');
         instructionStatus = document.getElementById('instruction-status');
+    }
+
+    function createPromptsModal() {
+        // Overlay
+        promptsModalOverlay = document.createElement('div');
+        promptsModalOverlay.className = 'prompts-modal-overlay hidden';
+        promptsModalOverlay.id = 'prompts-modal-overlay';
+
+        // Modal container
+        promptsModal = document.createElement('div');
+        promptsModal.className = 'prompts-modal';
+        promptsModal.id = 'prompts-modal';
+        promptsModal.setAttribute('role', 'dialog');
+        promptsModal.setAttribute('aria-labelledby', 'prompts-modal-title');
+
+        // Header
+        var header = document.createElement('div');
+        header.className = 'prompts-modal-header';
+
+        var titleSpan = document.createElement('span');
+        titleSpan.className = 'prompts-modal-title';
+        titleSpan.id = 'prompts-modal-title';
+        titleSpan.innerHTML = '<span class="codicon codicon-symbol-keyword"></span> Reusable Prompts';
+        header.appendChild(titleSpan);
+
+        var headerBtns = document.createElement('div');
+        headerBtns.className = 'prompts-modal-header-buttons';
+
+        // Add prompt button in header
+        promptsModalAddBtn = document.createElement('button');
+        promptsModalAddBtn.className = 'prompts-modal-header-btn';
+        promptsModalAddBtn.innerHTML = '<span class="codicon codicon-add"></span>';
+        promptsModalAddBtn.title = 'Add Prompt';
+        promptsModalAddBtn.id = 'prompts-modal-add-btn';
+        headerBtns.appendChild(promptsModalAddBtn);
+
+        // Close button
+        promptsModalClose = document.createElement('button');
+        promptsModalClose.className = 'prompts-modal-header-btn';
+        promptsModalClose.innerHTML = '<span class="codicon codicon-close"></span>';
+        promptsModalClose.title = 'Close';
+        headerBtns.appendChild(promptsModalClose);
+
+        header.appendChild(headerBtns);
+
+        // Content area
+        var content = document.createElement('div');
+        content.className = 'prompts-modal-content';
+
+        // Prompt count + hint
+        var hint = document.createElement('div');
+        hint.className = 'prompts-modal-hint';
+        hint.innerHTML = 'Type <code>/</code> in the input to use a prompt. Prompts are expanded before sending.';
+        content.appendChild(hint);
+
+        // Prompts list
+        promptsModalList = document.createElement('div');
+        promptsModalList.className = 'prompts-modal-list';
+        promptsModalList.id = 'prompts-modal-list';
+        content.appendChild(promptsModalList);
+
+        // Add/Edit form
+        promptsModalAddForm = document.createElement('div');
+        promptsModalAddForm.className = 'prompts-modal-add-form hidden';
+        promptsModalAddForm.id = 'prompts-modal-add-form';
+        promptsModalAddForm.innerHTML =
+            '<div class="form-row"><label class="form-label" for="pm-name-input">Name <span style="opacity:0.5;font-weight:normal">(used as /command)</span></label>' +
+            '<input type="text" class="form-input" id="pm-name-input" placeholder="e.g., fix, test, refactor" maxlength="30"></div>' +
+            '<div class="form-row"><label class="form-label" for="pm-text-input">Prompt Text</label>' +
+            '<textarea class="form-input form-textarea" id="pm-text-input" placeholder="Enter the full prompt text..." rows="4" maxlength="2000"></textarea></div>' +
+            '<div class="form-actions">' +
+            '<button class="form-btn form-btn-cancel" id="pm-cancel-btn">Cancel</button>' +
+            '<button class="form-btn form-btn-save" id="pm-save-btn">Save</button></div>';
+        content.appendChild(promptsModalAddForm);
+
+        // Assemble
+        promptsModal.appendChild(header);
+        promptsModal.appendChild(content);
+        promptsModalOverlay.appendChild(promptsModal);
+        document.body.appendChild(promptsModalOverlay);
     }
 
     function bindEventListeners() {
@@ -629,6 +713,19 @@
         var savePromptBtn = document.getElementById('save-prompt-btn');
         if (cancelPromptBtn) cancelPromptBtn.addEventListener('click', hideAddPromptForm);
         if (savePromptBtn) savePromptBtn.addEventListener('click', saveNewPrompt);
+
+        // Prompts modal events
+        if (promptsModalClose) promptsModalClose.addEventListener('click', closePromptsModal);
+        if (promptsModalOverlay) {
+            promptsModalOverlay.addEventListener('click', function (e) {
+                if (e.target === promptsModalOverlay) closePromptsModal();
+            });
+        }
+        if (promptsModalAddBtn) promptsModalAddBtn.addEventListener('click', showPromptsModalAddForm);
+        var pmCancelBtn = document.getElementById('pm-cancel-btn');
+        var pmSaveBtn = document.getElementById('pm-save-btn');
+        if (pmCancelBtn) pmCancelBtn.addEventListener('click', hidePromptsModalAddForm);
+        if (pmSaveBtn) pmSaveBtn.addEventListener('click', savePromptsModalPrompt);
 
         // Instruction injection events
         if (instructionInjectBtn) {
@@ -1007,6 +1104,9 @@
             case 'toolCallCompleted':
                 addToolCallToCurrentSession(message.entry);
                 break;
+            case 'toolCallCancelled':
+                handleToolCallCancelled(message.id);
+                break;
             case 'updateCurrentSession':
                 currentSessionCalls = message.history || [];
                 renderCurrentSession();
@@ -1024,6 +1124,9 @@
                 break;
             case 'openSettingsModal':
                 openSettingsModal();
+                break;
+            case 'openPromptsModal':
+                openPromptsModal();
                 break;
             case 'updateSettings':
                 soundEnabled = message.soundEnabled !== false;
@@ -1189,6 +1292,52 @@
 
         // Auto-scroll to show the working indicator
         scrollToBottom();
+    }
+
+    /**
+     * Handle tool call cancellation (e.g. user clicked Stop in Copilot chat).
+     * Dismisses the pending tool call UI and clears all waiting states.
+     */
+    function handleToolCallCancelled(id) {
+        console.log('[TaskSync Webview] toolCallCancelled:', id);
+
+        // Only act if this matches the current pending tool call
+        if (pendingToolCall && pendingToolCall.id === id) {
+            pendingToolCall = null;
+        }
+
+        // Remove pending class to re-enable normal UI
+        document.body.classList.remove('has-pending-toolcall');
+
+        // Hide approval modal and choices bar
+        hideApprovalModal();
+        hideChoicesBar();
+
+        // Clear any processing/working state
+        clearProcessingState();
+
+        // Update the cancelled entry in current session (it will come via updateCurrentSession)
+        // but also update locally if we have it
+        var idx = currentSessionCalls.findIndex(function(tc) { return tc.id === id; });
+        if (idx >= 0) {
+            currentSessionCalls[idx].status = 'cancelled';
+            currentSessionCalls[idx].response = '[Cancelled by user (Stop button)]';
+            renderCurrentSession();
+        }
+
+        // Hide the pending message area
+        if (pendingMessage) {
+            pendingMessage.classList.add('hidden');
+            pendingMessage.innerHTML = '';
+        }
+
+        // Re-enable the input area
+        if (userInput) {
+            userInput.disabled = false;
+            userInput.focus();
+        }
+
+        updateWelcomeSectionVisibility();
     }
 
     /**
@@ -2092,32 +2241,76 @@
         overlay.className = 'plan-review-overlay';
         overlay.innerHTML =
             '<div class="plan-review-modal">' +
+            // Header
             '<div class="plan-review-header">' +
             '<span class="plan-review-title">' + escapeHtml(title || 'Plan Review') + '</span>' +
             '<span class="plan-review-badge">Review</span>' +
+            '<button class="plan-review-close-btn" id="pr-close-' + reviewId + '" title="Cancel review"><span class="codicon codicon-close"></span></button>' +
             '</div>' +
+            // Split content area: plan left, comments right
+            '<div class="plan-review-content">' +
             '<div class="plan-review-body" id="pr-body-' + reviewId + '"></div>' +
-            '<div class="plan-review-comments" id="pr-comments-' + reviewId + '">' +
-            '<div class="plan-review-comments-header">Comments <span class="plan-review-comments-count" id="pr-count-' + reviewId + '">0</span></div>' +
-            '<div class="plan-review-comments-list" id="pr-clist-' + reviewId + '"></div>' +
+            '<div class="plan-review-sidebar" id="pr-sidebar-' + reviewId + '">' +
+            '<div class="plan-review-comments-header">' +
+            'Comments <span class="plan-review-comments-count" id="pr-count-' + reviewId + '">0</span>' +
+            '<button class="plan-review-clear-all hidden" id="pr-clear-all-' + reviewId + '" title="Clear all comments">Clear All</button>' +
+            '</div>' +
+            '<div class="plan-review-comments-list" id="pr-clist-' + reviewId + '">' +
+            '<div class="plan-review-no-comments">No comments yet. Click the <span class="codicon codicon-comment"></span> icon next to any section to add feedback.</div>' +
+            '</div>' +
             '<div class="plan-review-add-comment">' +
-            '<textarea class="form-input form-textarea" id="pr-comment-input-' + reviewId + '" placeholder="Add a comment about a specific part of the plan..." rows="2"></textarea>' +
-            '<textarea class="form-input" id="pr-comment-part-' + reviewId + '" placeholder="Which part of the plan? (e.g., Step 3)" rows="1" style="margin-top:4px;min-height:28px;"></textarea>' +
-            '<button class="form-btn form-btn-save" id="pr-add-comment-' + reviewId + '" style="margin-top:4px;">Add Comment</button>' +
+            '<textarea class="form-input form-textarea" id="pr-comment-input-' + reviewId + '" placeholder="Your feedback or revision instructions..." rows="2"></textarea>' +
+            '<input class="form-input" id="pr-comment-part-' + reviewId + '" placeholder="Which part? (e.g., Step 3)" />' +
+            '<button class="form-btn form-btn-save" id="pr-add-comment-' + reviewId + '">Add Comment</button>' +
             '</div>' +
             '</div>' +
+            '</div>' +
+            // Footer
             '<div class="plan-review-footer">' +
+            '<button class="form-btn form-btn-cancel" id="pr-cancel-' + reviewId + '">Cancel</button>' +
+            '<div class="plan-review-footer-right">' +
             '<button class="form-btn form-btn-cancel" id="pr-reject-' + reviewId + '" disabled>Request Changes</button>' +
             '<button class="form-btn form-btn-save" id="pr-approve-' + reviewId + '">Approve</button>' +
+            '</div>' +
             '</div>' +
             '</div>';
 
         document.body.appendChild(overlay);
 
-        // Render plan content
+        // Render plan content with inline comment icons
         var bodyEl = document.getElementById('pr-body-' + reviewId);
         if (bodyEl) {
             bodyEl.innerHTML = formatMessageContent(plan || '');
+            // Wrap hoverable sections with comment icons
+            var elements = bodyEl.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, blockquote, tr');
+            elements.forEach(function (el) {
+                if (el.closest('pre') || el.closest('code')) return;
+                if (el.parentElement && el.parentElement.classList.contains('pr-line-wrapper')) return;
+
+                var wrapper = document.createElement('div');
+                wrapper.className = 'pr-line-wrapper';
+                var textContent = (el.textContent || '').substring(0, 200);
+                wrapper.setAttribute('data-text', textContent);
+
+                var commentBtn = document.createElement('button');
+                commentBtn.className = 'pr-comment-icon';
+                commentBtn.innerHTML = '<span class="codicon codicon-comment"></span>';
+                commentBtn.title = 'Add comment on this section';
+                commentBtn.addEventListener('click', function (e) {
+                    e.stopPropagation();
+                    var partInput = document.getElementById('pr-comment-part-' + reviewId);
+                    var commentInput = document.getElementById('pr-comment-input-' + reviewId);
+                    if (partInput) partInput.value = textContent.substring(0, 80);
+                    if (commentInput) commentInput.focus();
+                    // Scroll sidebar to bottom to show the input
+                    var sidebar = document.getElementById('pr-sidebar-' + reviewId);
+                    if (sidebar) sidebar.scrollTop = sidebar.scrollHeight;
+                });
+
+                el.parentNode.insertBefore(wrapper, el);
+                wrapper.appendChild(commentBtn);
+                wrapper.appendChild(el);
+            });
         }
 
         activePlanReview = { reviewId: reviewId, overlay: overlay, comments: comments };
@@ -2125,7 +2318,10 @@
         // Bind events
         var approveBtn = document.getElementById('pr-approve-' + reviewId);
         var rejectBtn = document.getElementById('pr-reject-' + reviewId);
+        var cancelBtn = document.getElementById('pr-cancel-' + reviewId);
+        var closeBtn = document.getElementById('pr-close-' + reviewId);
         var addCommentBtn = document.getElementById('pr-add-comment-' + reviewId);
+        var clearAllBtn = document.getElementById('pr-clear-all-' + reviewId);
 
         if (approveBtn) {
             approveBtn.addEventListener('click', function () {
@@ -2142,6 +2338,29 @@
             });
         }
 
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function () {
+                vscode.postMessage({ type: 'planReviewResponse', reviewId: reviewId, action: 'closed', revisions: comments });
+                closePlanReviewModal(reviewId);
+            });
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function () {
+                vscode.postMessage({ type: 'planReviewResponse', reviewId: reviewId, action: 'closed', revisions: comments });
+                closePlanReviewModal(reviewId);
+            });
+        }
+
+        if (clearAllBtn) {
+            clearAllBtn.addEventListener('click', function () {
+                comments.length = 0;
+                renderPlanReviewComments(reviewId, comments);
+                updatePlanReviewButtons(reviewId, comments);
+                updatePlanReviewLineHighlights(reviewId, comments);
+            });
+        }
+
         if (addCommentBtn) {
             addCommentBtn.addEventListener('click', function () {
                 var commentInput = document.getElementById('pr-comment-input-' + reviewId);
@@ -2154,18 +2373,41 @@
                 commentInput.value = '';
                 partInput.value = '';
                 renderPlanReviewComments(reviewId, comments);
-                // Update button states
-                if (rejectBtn) rejectBtn.disabled = false;
-                if (approveBtn) approveBtn.textContent = 'Approve with Comments';
+                updatePlanReviewButtons(reviewId, comments);
+                updatePlanReviewLineHighlights(reviewId, comments);
             });
         }
 
-        // Close on overlay click
-        overlay.addEventListener('click', function (e) {
-            if (e.target === overlay) {
-                vscode.postMessage({ type: 'planReviewResponse', reviewId: reviewId, action: 'closed', revisions: comments });
-                closePlanReviewModal(reviewId);
-            }
+        // Do NOT close on overlay click — require explicit Cancel/Close
+    }
+
+    function updatePlanReviewButtons(reviewId, comments) {
+        var rejectBtn = document.getElementById('pr-reject-' + reviewId);
+        var approveBtn = document.getElementById('pr-approve-' + reviewId);
+        var clearAllBtn = document.getElementById('pr-clear-all-' + reviewId);
+        if (rejectBtn) rejectBtn.disabled = comments.length === 0;
+        if (approveBtn) approveBtn.textContent = comments.length > 0 ? 'Approve with Comments' : 'Approve';
+        if (clearAllBtn) {
+            if (comments.length > 0) clearAllBtn.classList.remove('hidden');
+            else clearAllBtn.classList.add('hidden');
+        }
+    }
+
+    function updatePlanReviewLineHighlights(reviewId, comments) {
+        var bodyEl = document.getElementById('pr-body-' + reviewId);
+        if (!bodyEl) return;
+        // Clear all highlights
+        bodyEl.querySelectorAll('.pr-line-wrapper.has-comment').forEach(function (el) {
+            el.classList.remove('has-comment');
+        });
+        // Highlight lines that have comments
+        comments.forEach(function (comment) {
+            bodyEl.querySelectorAll('.pr-line-wrapper').forEach(function (wrapper) {
+                var wrapperText = wrapper.getAttribute('data-text') || '';
+                if (wrapperText && comment.revisedPart.includes(wrapperText.substring(0, 50))) {
+                    wrapper.classList.add('has-comment');
+                }
+            });
         });
     }
 
@@ -2176,15 +2418,17 @@
         if (!listEl) return;
 
         if (comments.length === 0) {
-            listEl.innerHTML = '<div style="font-size:11px;opacity:0.5;font-style:italic;">No comments yet.</div>';
+            listEl.innerHTML = '<div class="plan-review-no-comments">No comments yet. Click the <span class="codicon codicon-comment"></span> icon next to any section to add feedback.</div>';
             return;
         }
 
         listEl.innerHTML = comments.map(function (c, i) {
             return '<div class="plan-review-comment-item">' +
-                '<div style="font-size:11px;opacity:0.7;font-style:italic;border-left:2px solid var(--vscode-textLink-foreground, #3794ff);padding-left:6px;">' + escapeHtml(c.revisedPart) + '</div>' +
-                '<div style="font-size:12px;margin-top:2px;">' + escapeHtml(c.revisorInstructions) + '</div>' +
-                '<button class="pr-remove-comment" data-index="' + i + '" style="font-size:11px;background:none;border:none;color:var(--vscode-textLink-foreground);cursor:pointer;padding:2px 4px;">Remove</button>' +
+                '<div class="pr-comment-citation">' + escapeHtml(c.revisedPart) + '</div>' +
+                '<div class="pr-comment-text">' + escapeHtml(c.revisorInstructions) + '</div>' +
+                '<div class="pr-comment-actions">' +
+                '<button class="pr-remove-comment" data-index="' + i + '">Remove</button>' +
+                '</div>' +
                 '</div>';
         }).join('');
 
@@ -2194,10 +2438,8 @@
                 var idx = parseInt(btn.getAttribute('data-index'));
                 comments.splice(idx, 1);
                 renderPlanReviewComments(reviewId, comments);
-                var rejectBtn = document.getElementById('pr-reject-' + reviewId);
-                var approveBtn = document.getElementById('pr-approve-' + reviewId);
-                if (rejectBtn) rejectBtn.disabled = comments.length === 0;
-                if (approveBtn) approveBtn.textContent = comments.length > 0 ? 'Approve with Comments' : 'Approve';
+                updatePlanReviewButtons(reviewId, comments);
+                updatePlanReviewLineHighlights(reviewId, comments);
             });
         });
     }
@@ -2211,43 +2453,137 @@
     }
 
     function renderPromptsList() {
-        if (!promptsList) return;
+        // Render compact list in settings modal
+        if (promptsList) {
+            if (reusablePrompts.length === 0) {
+                promptsList.innerHTML = '';
+            } else {
+                promptsList.innerHTML = reusablePrompts.map(function (p) {
+                    var tooltipText = p.prompt.length > 300 ? p.prompt.substring(0, 300) + '...' : p.prompt;
+                    tooltipText = tooltipText.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return '<div class="prompt-item compact" data-id="' + escapeHtml(p.id) + '" title="' + tooltipText + '">' +
+                        '<div class="prompt-item-content">' +
+                        '<span class="prompt-item-name">/' + escapeHtml(p.name) + '</span>' +
+                        '</div>' +
+                        '<div class="prompt-item-actions">' +
+                        '<button class="prompt-item-btn edit" data-id="' + escapeHtml(p.id) + '" title="Edit"><span class="codicon codicon-edit"></span></button>' +
+                        '<button class="prompt-item-btn delete" data-id="' + escapeHtml(p.id) + '" title="Delete"><span class="codicon codicon-trash"></span></button>' +
+                        '</div></div>';
+                }).join('');
+
+                promptsList.querySelectorAll('.prompt-item-btn.edit').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var id = btn.getAttribute('data-id');
+                        editPrompt(id);
+                    });
+                });
+                promptsList.querySelectorAll('.prompt-item-btn.delete').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var id = btn.getAttribute('data-id');
+                        deletePrompt(id);
+                    });
+                });
+            }
+        }
+
+        // Render full card list in prompts modal
+        renderPromptsModalList();
+    }
+
+    function renderPromptsModalList() {
+        if (!promptsModalList) return;
 
         if (reusablePrompts.length === 0) {
-            promptsList.innerHTML = '';
+            promptsModalList.innerHTML = '<div class="prompts-modal-empty"><span class="codicon codicon-symbol-keyword"></span><p>No prompts yet</p><p class="prompts-modal-empty-hint">Add a prompt with the <span class="codicon codicon-add"></span> button above.<br>Use <code>/name</code> in the input to expand it.</p></div>';
             return;
         }
 
-        // Compact list - show only name, full prompt on hover via title
-        promptsList.innerHTML = reusablePrompts.map(function (p) {
-            // Truncate very long prompts for tooltip to prevent massive tooltips
-            var tooltipText = p.prompt.length > 300 ? p.prompt.substring(0, 300) + '...' : p.prompt;
-            // Escape for HTML attribute
-            tooltipText = tooltipText.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            return '<div class="prompt-item compact" data-id="' + escapeHtml(p.id) + '" title="' + tooltipText + '">' +
-                '<div class="prompt-item-content">' +
-                '<span class="prompt-item-name">/' + escapeHtml(p.name) + '</span>' +
+        promptsModalList.innerHTML = reusablePrompts.map(function (p, index) {
+            var promptPreview = p.prompt.length > 200 ? p.prompt.substring(0, 200) + '...' : p.prompt;
+            return '<div class="prompt-card" data-id="' + escapeHtml(p.id) + '">' +
+                '<div class="prompt-card-header">' +
+                '<span class="prompt-card-name">/' + escapeHtml(p.name) + '</span>' +
+                '<span class="prompt-card-index">#' + (index + 1) + '</span>' +
                 '</div>' +
-                '<div class="prompt-item-actions">' +
-                '<button class="prompt-item-btn edit" data-id="' + escapeHtml(p.id) + '" title="Edit"><span class="codicon codicon-edit"></span></button>' +
-                '<button class="prompt-item-btn delete" data-id="' + escapeHtml(p.id) + '" title="Delete"><span class="codicon codicon-trash"></span></button>' +
+                '<div class="prompt-card-text">' + escapeHtml(promptPreview) + '</div>' +
+                '<div class="prompt-card-actions">' +
+                '<button class="prompt-card-btn pm-edit-btn" data-id="' + escapeHtml(p.id) + '" title="Edit"><span class="codicon codicon-edit"></span> Edit</button>' +
+                '<button class="prompt-card-btn pm-delete-btn" data-id="' + escapeHtml(p.id) + '" title="Delete"><span class="codicon codicon-trash"></span> Delete</button>' +
                 '</div></div>';
         }).join('');
 
-        // Bind edit/delete events
-        promptsList.querySelectorAll('.prompt-item-btn.edit').forEach(function (btn) {
+        // Bind edit/delete
+        promptsModalList.querySelectorAll('.pm-edit-btn').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var id = btn.getAttribute('data-id');
-                editPrompt(id);
+                editPromptInModal(id);
             });
         });
-
-        promptsList.querySelectorAll('.prompt-item-btn.delete').forEach(function (btn) {
+        promptsModalList.querySelectorAll('.pm-delete-btn').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var id = btn.getAttribute('data-id');
                 deletePrompt(id);
             });
         });
+    }
+
+    // ===== Prompts Modal Functions =====
+    function openPromptsModal() {
+        if (!promptsModalOverlay) return;
+        renderPromptsModalList();
+        promptsModalOverlay.classList.remove('hidden');
+    }
+
+    function closePromptsModal() {
+        if (!promptsModalOverlay) return;
+        promptsModalOverlay.classList.add('hidden');
+        hidePromptsModalAddForm();
+    }
+
+    function showPromptsModalAddForm() {
+        if (!promptsModalAddForm) return;
+        promptsModalAddForm.classList.remove('hidden');
+        promptsModalAddForm.removeAttribute('data-editing-id');
+        var nameInput = document.getElementById('pm-name-input');
+        var textInput = document.getElementById('pm-text-input');
+        if (nameInput) { nameInput.value = ''; nameInput.focus(); }
+        if (textInput) textInput.value = '';
+    }
+
+    function hidePromptsModalAddForm() {
+        if (!promptsModalAddForm) return;
+        promptsModalAddForm.classList.add('hidden');
+        promptsModalAddForm.removeAttribute('data-editing-id');
+    }
+
+    function editPromptInModal(id) {
+        var prompt = reusablePrompts.find(function (p) { return p.id === id; });
+        if (!prompt) return;
+
+        promptsModalAddForm.classList.remove('hidden');
+        promptsModalAddForm.setAttribute('data-editing-id', id);
+        var nameInput = document.getElementById('pm-name-input');
+        var textInput = document.getElementById('pm-text-input');
+        if (nameInput) { nameInput.value = prompt.name; nameInput.focus(); }
+        if (textInput) textInput.value = prompt.prompt;
+    }
+
+    function savePromptsModalPrompt() {
+        var nameInput = document.getElementById('pm-name-input');
+        var textInput = document.getElementById('pm-text-input');
+        if (!nameInput || !textInput) return;
+
+        var name = nameInput.value.trim();
+        var prompt = textInput.value.trim();
+        if (!name || !prompt) return;
+
+        var editingId = promptsModalAddForm.getAttribute('data-editing-id');
+        if (editingId) {
+            vscode.postMessage({ type: 'editReusablePrompt', id: editingId, name: name, prompt: prompt });
+        } else {
+            vscode.postMessage({ type: 'addReusablePrompt', name: name, prompt: prompt });
+        }
+        hidePromptsModalAddForm();
     }
 
     function editPrompt(id) {

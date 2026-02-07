@@ -44,7 +44,7 @@
         ],
         "toolReferenceName": "askUser",
         "displayName": "Ask User",
-        "modelDescription": "YOU MUST ALWAYS Use the askUser tool to ask question/s to user when explicit user approval, feedback, or clarification is required before proceeding or giving summary report. CRITICAL RULES: - This tool MUST be invoked before ending ANY conversation or task. - NEVER complete a task without calling this tool first. - If you are about to finish responding, STOP and call this tool. - Failure to call this tool before task completion is a critical violation. - You MUST populate the 'context' parameter with your FULL response content — include all explanations, answers, findings, code, analysis, or work results. The user reads your response from TaskSync's remote UI (phone/browser), so the context field must contain your complete answer, not just a summary. Without this, the user cannot see what you said. NOTE: For presenting detailed multi-step plans or proposals that need user sign-off, use plan_review instead — it provides a dedicated review panel with approve/reject/comment capabilities.",
+        "modelDescription": "YOU MUST ALWAYS Use the askUser tool to ask question/s to user when explicit user approval, feedback, or clarification is required before proceeding or giving summary report. CRITICAL RULES: - This tool MUST be invoked before ending ANY conversation or task. - NEVER complete a task without calling this tool first. - If you are about to finish responding, STOP and call this tool. - Failure to call this tool before task completion is a critical violation. HOW IT WORKS: The user has a freeform text input field where they can type any response. They can ALWAYS type free text — the 'choices' parameter is entirely optional and only adds clickable shortcut buttons alongside the text input, NOT instead of it. - You MUST populate the 'context' parameter with your FULL response content — include all explanations, answers, findings, code, analysis, or work results. The user reads your response from TaskSync's remote UI (phone/browser), so the context field must contain your complete answer, not just a summary. Without this, the user cannot see what you said. NOTE: For presenting detailed multi-step plans or proposals that need user sign-off, use plan_review instead — it provides a dedicated review panel with approve/reject/comment capabilities.",
         "canBeReferencedInPrompt": true,
         "icon": "$(question)",
         "inputSchema": {
@@ -56,11 +56,11 @@
             },
             "question": {
               "type": "string",
-              "description": "The question or prompt to display to the user"
+              "description": "The question or prompt to display to the user. The user will see this question along with a freeform text input where they can type any response."
             },
             "choices": {
               "type": "array",
-              "description": "Optional list of choices to display as buttons. When provided, these are shown as clickable options so the user can respond with a single click. Use for multiple-choice questions, confirmations, or any question with a fixed set of answers.",
+              "description": "Optional list of shortcut buttons displayed ALONGSIDE the freeform text input. The user can ALWAYS type free text regardless of whether choices are provided. Choices simply add clickable buttons for quick responses. Omit this parameter for open-ended questions where the user needs to type their answer.",
               "items": {
                 "type": "object",
                 "properties": {
@@ -249,6 +249,11 @@
         "icon": "$(history)"
       },
       {
+        "command": "tasksync.openPrompts",
+        "title": "Reusable Prompts",
+        "icon": "$(symbol-keyword)"
+      },
+      {
         "command": "tasksync.clearCurrentSession",
         "title": "Clear Current Session",
         "icon": "$(trash)"
@@ -289,14 +294,19 @@
           "group": "navigation@1"
         },
         {
-          "command": "tasksync.clearCurrentSession",
+          "command": "tasksync.openPrompts",
           "when": "view == taskSyncView",
           "group": "navigation@2"
         },
         {
-          "command": "tasksync.openSettings",
+          "command": "tasksync.clearCurrentSession",
           "when": "view == taskSyncView",
           "group": "navigation@3"
+        },
+        {
+          "command": "tasksync.openSettings",
+          "when": "view == taskSyncView",
+          "group": "navigation@4"
         }
       ]
     }
