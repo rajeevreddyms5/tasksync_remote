@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { FILE_EXCLUSION_PATTERNS, FILE_SEARCH_EXCLUSION_PATTERNS, formatExcludePattern } from '../constants/fileExclusions';
 import { ContextManager, ContextReferenceType, ContextReference } from '../context';
+import { PlanReviewPanel } from '../planReview/planReviewPanel';
+import { PlanReviewPanelResult } from '../planReview/types';
 
 // Queued prompt interface
 export interface QueuedPrompt {
@@ -75,12 +77,14 @@ type ToWebviewMessage =
     | { type: 'updateAttachments'; attachments: AttachmentInfo[] }
     | { type: 'imageSaved'; attachment: AttachmentInfo }
     | { type: 'openSettingsModal' }
-    | { type: 'updateSettings'; soundEnabled: boolean; interactiveApprovalEnabled: boolean; reusablePrompts: ReusablePrompt[] }
+    | { type: 'updateSettings'; soundEnabled: boolean; interactiveApprovalEnabled: boolean; reusablePrompts: ReusablePrompt[]; instructionInjection: string; instructionText: string }
     | { type: 'slashCommandResults'; prompts: ReusablePrompt[] }
     | { type: 'playNotificationSound' }
     | { type: 'clearProcessing' }  // Clear "Processing your response" state
     | { type: 'contextSearchResults'; suggestions: Array<{ type: string; label: string; description: string; detail: string }> }
-    | { type: 'contextReferenceAdded'; reference: { id: string; type: string; label: string; content: string } };
+    | { type: 'contextReferenceAdded'; reference: { id: string; type: string; label: string; content: string } }
+    | { type: 'planReviewPending'; reviewId: string; title: string; plan: string }
+    | { type: 'planReviewCompleted'; reviewId: string; status: string };
 
 type FromWebviewMessage =
     | { type: 'submit'; value: string; attachments: AttachmentInfo[] }
@@ -108,7 +112,11 @@ type FromWebviewMessage =
     | { type: 'searchSlashCommands'; query: string }
     | { type: 'openExternal'; url: string }
     | { type: 'searchContext'; query: string }
-    | { type: 'selectContextReference'; contextType: string; options?: Record<string, unknown> };
+    | { type: 'selectContextReference'; contextType: string; options?: Record<string, unknown> }
+    | { type: 'updateInstructionInjection'; method: string }
+    | { type: 'updateInstructionText'; text: string }
+    | { type: 'resetInstructionText' }
+    | { type: 'planReviewResponse'; reviewId: string; action: string; revisions: Array<{ revisedPart: string; revisorInstructions: string }> };
 
 
 export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
@@ -167,6 +175,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
     // Interactive approval buttons enabled (loaded from VS Code settings)
     private _interactiveApprovalEnabled: boolean = true;
+
+    // Instruction injection settings
+    private _instructionInjection: string = 'off';
+    private _instructionText: string = '';
 
     // Flag to prevent config reload during our own updates (avoids race condition)
     private _isUpdatingConfig: boolean = false;
@@ -292,6 +304,71 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
+     * Record a plan review interaction in the session history.
+     * Called from the plan_review tool after the user takes action.
+     */
+    public recordPlanReview(reviewId: string, title: string, status: string, plan: string, revisions: Array<{ revisedPart: string; revisorInstructions: string }>): void {
+        // Format response summary
+        let responseSummary = `Status: ${status}`;
+        if (revisions.length > 0) {
+            responseSummary += `\nComments (${revisions.length}):`;
+            for (const rev of revisions) {
+                responseSummary += `\n• "${rev.revisedPart.substring(0, 80)}..." → ${rev.revisorInstructions}`;
+            }
+        }
+
+        const entry: ToolCallEntry = {
+            id: reviewId,
+            prompt: `[Plan Review] ${title}\n\n${plan.substring(0, 500)}${plan.length > 500 ? '...' : ''}`,
+            response: responseSummary,
+            timestamp: Date.now(),
+            isFromQueue: false,
+            status: 'completed'
+        };
+
+        this._currentSessionCalls.push(entry);
+        this._currentSessionCallsMap.set(entry.id, entry);
+        this._updateCurrentSessionUI();
+
+        // Notify the webview
+        const message: ToWebviewMessage = {
+            type: 'toolCallCompleted',
+            entry
+        };
+        this._view?.webview.postMessage(message);
+        this._broadcastCallback?.(message);
+    }
+
+    /**
+     * Broadcast a plan review pending state to remote clients.
+     * Called when plan_review tool is invoked — allows remote users to review the plan.
+     */
+    public broadcastPlanReview(reviewId: string, title: string, plan: string): void {
+        const message = {
+            type: 'planReviewPending' as const,
+            reviewId,
+            title,
+            plan
+        };
+        this._view?.webview.postMessage(message);
+        this._broadcastCallback?.(message);
+    }
+
+    /**
+     * Broadcast plan review completion to remote clients.
+     * Dismisses any remote plan review modal.
+     */
+    public broadcastPlanReviewCompleted(reviewId: string, status: string): void {
+        const message = {
+            type: 'planReviewCompleted' as const,
+            reviewId,
+            status
+        };
+        this._view?.webview.postMessage(message);
+        this._broadcastCallback?.(message);
+    }
+
+    /**
      * Play notification sound (called when ask_user tool is triggered)
      * Works even when webview is not visible by using system sound
      */
@@ -336,6 +413,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const config = vscode.workspace.getConfiguration('tasksync');
         this._soundEnabled = config.get<boolean>('notificationSound', true);
         this._interactiveApprovalEnabled = config.get<boolean>('interactiveApproval', true);
+        this._instructionInjection = config.get<string>('instructionInjection', 'off');
+        this._instructionText = config.get<string>('instructionText', '');
 
         // Load reusable prompts from settings
         const savedPrompts = config.get<Array<{ name: string; prompt: string }>>('reusablePrompts', []);
@@ -371,7 +450,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             type: 'updateSettings',
             soundEnabled: this._soundEnabled,
             interactiveApprovalEnabled: this._interactiveApprovalEnabled,
-            reusablePrompts: this._reusablePrompts
+            reusablePrompts: this._reusablePrompts,
+            instructionInjection: this._instructionInjection,
+            instructionText: this._instructionText
         } as ToWebviewMessage);
     }
 
@@ -823,6 +904,18 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'removeReusablePrompt':
                 this._handleRemoveReusablePrompt(message.id);
+                break;
+            case 'updateInstructionInjection':
+                this._handleUpdateInstructionInjection(message.method);
+                break;
+            case 'updateInstructionText':
+                this._handleUpdateInstructionText(message.text);
+                break;
+            case 'resetInstructionText':
+                this._handleResetInstructionText();
+                break;
+            case 'planReviewResponse':
+                this._handlePlanReviewResponse(message.reviewId, message.action, message.revisions || []);
                 break;
             case 'searchSlashCommands':
                 this._handleSearchSlashCommands(message.query);
@@ -1524,6 +1617,94 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             this._updateSettingsUI();
         } finally {
             this._isUpdatingConfig = false;
+        }
+    }
+
+    /**
+     * Handle updating instruction injection method
+     */
+    private async _handleUpdateInstructionInjection(method: string): Promise<void> {
+        this._instructionInjection = method;
+        this._isUpdatingConfig = true;
+        try {
+            const config = vscode.workspace.getConfiguration('tasksync');
+            await config.update('instructionInjection', method, vscode.ConfigurationTarget.Workspace);
+            this._loadSettings();
+            this._updateSettingsUI();
+
+            if (method !== 'off') {
+                const methodLabel = method === 'copilotInstructionsMd'
+                    ? '.github/copilot-instructions.md'
+                    : 'Code Generation settings';
+                const action = await vscode.window.showInformationMessage(
+                    `TaskSync instructions injected into ${methodLabel}. Restart the workspace window for changes to take full effect.`,
+                    'Restart Window'
+                );
+                if (action === 'Restart Window') {
+                    vscode.commands.executeCommand('workbench.action.reloadWindow');
+                }
+            } else {
+                vscode.window.showInformationMessage('TaskSync instructions removed.');
+            }
+        } finally {
+            this._isUpdatingConfig = false;
+        }
+    }
+
+    /**
+     * Handle updating instruction text
+     */
+    private async _handleUpdateInstructionText(text: string): Promise<void> {
+        this._instructionText = text;
+        this._isUpdatingConfig = true;
+        try {
+            const config = vscode.workspace.getConfiguration('tasksync');
+            await config.update('instructionText', text, vscode.ConfigurationTarget.Workspace);
+            this._loadSettings();
+            this._updateSettingsUI();
+        } finally {
+            this._isUpdatingConfig = false;
+        }
+    }
+
+    /**
+     * Handle resetting instruction text to default
+     */
+    private async _handleResetInstructionText(): Promise<void> {
+        this._isUpdatingConfig = true;
+        try {
+            const config = vscode.workspace.getConfiguration('tasksync');
+            // Remove the workspace-level override to fall back to package.json default
+            await config.update('instructionText', undefined, vscode.ConfigurationTarget.Workspace);
+            this._loadSettings();
+            this._updateSettingsUI();
+            vscode.window.showInformationMessage('Instruction text reset to default.');
+        } finally {
+            this._isUpdatingConfig = false;
+        }
+    }
+
+    /**
+     * Handle a plan review response from remote client or sidebar.
+     * Resolves the PlanReviewPanel externally so the tool call can complete.
+     */
+    private _handlePlanReviewResponse(
+        reviewId: string,
+        action: string,
+        revisions: Array<{ revisedPart: string; revisorInstructions: string }>
+    ): void {
+        const mappedAction = (['approved', 'approvedWithComments', 'recreateWithChanges'].includes(action)
+            ? action
+            : 'closed') as PlanReviewPanelResult['action'];
+
+        const result: PlanReviewPanelResult = {
+            action: mappedAction,
+            requiredRevisions: revisions
+        };
+
+        const resolved = PlanReviewPanel.resolveExternally(reviewId, result);
+        if (resolved) {
+            console.log('[TaskSync] Plan review resolved remotely:', reviewId, action);
         }
     }
 

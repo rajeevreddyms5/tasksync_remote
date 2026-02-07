@@ -7,6 +7,7 @@ import { registerTools } from './tools';
 import { McpServerManager } from './mcp/mcpServer';
 import { ContextManager } from './context';
 import { RemoteUiServer, RemoteMessage } from './server/remoteUiServer';
+import { registerPlanReviewTool } from './planReview';
 
 let mcpServer: McpServerManager | undefined;
 let webviewProvider: TaskSyncWebviewProvider | undefined;
@@ -69,8 +70,23 @@ export function activate(context: vscode.ExtensionContext) {
     // Register VS Code LM Tools (always available for Copilot)
     registerTools(context, provider);
 
+    // Register plan_review tool (opens a dedicated review panel)
+    const planReviewDisposable = registerPlanReviewTool(context, provider);
+    context.subscriptions.push(planReviewDisposable);
+
+    // Inject instructions based on configured method
+    handleInstructionInjection();
+
+    // Listen for settings changes to toggle instruction injection
+    const configWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration('tasksync.instructionInjection') || e.affectsConfiguration('tasksync.instructionText')) {
+            handleInstructionInjection();
+        }
+    });
+    context.subscriptions.push(configWatcher);
+
     // Initialize MCP server manager (but don't start yet)
-    mcpServer = new McpServerManager(provider);
+    mcpServer = new McpServerManager(provider, context.extensionUri);
 
     // Check if MCP should auto-start based on settings and external client configs
     // Deferred to avoid blocking activation with file I/O
@@ -353,6 +369,252 @@ export function activate(context: vscode.ExtensionContext) {
         toggleRemoteCmd, startRemoteCmd, stopRemoteCmd, showRemoteUrlCmd,
         remoteServer
     );
+}
+
+const TASKSYNC_SECTION_START = '<!-- [TaskSync] START -->';
+const TASKSYNC_SECTION_END = '<!-- [TaskSync] END -->';
+const TASKSYNC_MARKER = '[TaskSync]';
+
+/**
+ * Handle instruction injection based on the selected method.
+ * Supports: 'off', 'copilotInstructionsMd', 'codeGenerationSetting'
+ */
+async function handleInstructionInjection(): Promise<void> {
+    const config = vscode.workspace.getConfiguration('tasksync');
+    const method = config.get<string>('instructionInjection', 'off');
+
+    // Migrate old global-level instructions if they exist
+    migrateGlobalToWorkspaceInstructions();
+
+    try {
+        switch (method) {
+            case 'copilotInstructionsMd':
+                // Remove from codeGeneration.instructions if switching methods
+                removeFromCodeGenSettings();
+                await injectIntoCopilotInstructionsMd();
+                break;
+            case 'codeGenerationSetting':
+                // Remove from copilot-instructions.md if switching methods
+                await removeFromCopilotInstructionsMd();
+                injectIntoCodeGenSettings();
+                break;
+            case 'off':
+            default:
+                // Remove from both locations
+                removeFromCodeGenSettings();
+                await removeFromCopilotInstructionsMd();
+                break;
+        }
+    } catch (err) {
+        console.error('[TaskSync] Failed to handle instruction injection:', err);
+    }
+}
+
+/**
+ * Get the instruction text from settings
+ */
+function getInstructionText(): string {
+    const config = vscode.workspace.getConfiguration('tasksync');
+    return config.get<string>('instructionText', '');
+}
+
+/**
+ * Inject TaskSync instructions into .github/copilot-instructions.md
+ * Prompts user for confirmation before creating/modifying the file.
+ */
+async function injectIntoCopilotInstructionsMd(): Promise<void> {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) return;
+
+    const instructionText = getInstructionText();
+    if (!instructionText.trim()) return;
+
+    const rootUri = workspaceFolders[0].uri;
+    const githubDir = vscode.Uri.joinPath(rootUri, '.github');
+    const filePath = vscode.Uri.joinPath(githubDir, 'copilot-instructions.md');
+
+    const sectionContent = `\n\n${TASKSYNC_SECTION_START}\n${instructionText}\n${TASKSYNC_SECTION_END}`;
+
+    try {
+        // Check if file exists
+        let existingContent = '';
+        let fileExists = false;
+        try {
+            const fileData = await vscode.workspace.fs.readFile(filePath);
+            existingContent = Buffer.from(fileData).toString('utf-8');
+            fileExists = true;
+        } catch {
+            // File doesn't exist
+        }
+
+        // Check if TaskSync section already exists
+        if (fileExists && existingContent.includes(TASKSYNC_SECTION_START)) {
+            // Update existing section
+            const startIdx = existingContent.indexOf(TASKSYNC_SECTION_START);
+            const endIdx = existingContent.indexOf(TASKSYNC_SECTION_END);
+            if (startIdx !== -1 && endIdx !== -1) {
+                const currentSection = existingContent.substring(startIdx, endIdx + TASKSYNC_SECTION_END.length);
+                const newSection = `${TASKSYNC_SECTION_START}\n${instructionText}\n${TASKSYNC_SECTION_END}`;
+                if (currentSection !== newSection) {
+                    const updatedContent = existingContent.substring(0, startIdx) + newSection + existingContent.substring(endIdx + TASKSYNC_SECTION_END.length);
+                    await vscode.workspace.fs.writeFile(filePath, Buffer.from(updatedContent, 'utf-8'));
+                    console.log('[TaskSync] Updated instructions in copilot-instructions.md');
+                }
+            }
+            return;
+        }
+
+        // Need to create or append — ask user for confirmation
+        const action = fileExists ? 'append to' : 'create';
+        const confirm = await vscode.window.showInformationMessage(
+            `TaskSync wants to ${action} .github/copilot-instructions.md with TaskSync tool instructions. This ensures the AI always calls ask_user and plan_review.`,
+            'Allow',
+            'Cancel'
+        );
+
+        if (confirm !== 'Allow') {
+            // User declined — reset setting to 'off'
+            const cfg = vscode.workspace.getConfiguration('tasksync');
+            cfg.update('instructionInjection', 'off', vscode.ConfigurationTarget.Workspace);
+            return;
+        }
+
+        if (fileExists) {
+            // Append to existing file
+            const updatedContent = existingContent + sectionContent;
+            await vscode.workspace.fs.writeFile(filePath, Buffer.from(updatedContent, 'utf-8'));
+            console.log('[TaskSync] Appended instructions to copilot-instructions.md');
+        } else {
+            // Create .github directory and file
+            try { await vscode.workspace.fs.createDirectory(githubDir); } catch { /* exists */ }
+            const newContent = `# Copilot Instructions\n${sectionContent}`;
+            await vscode.workspace.fs.writeFile(filePath, Buffer.from(newContent, 'utf-8'));
+            console.log('[TaskSync] Created copilot-instructions.md with instructions');
+        }
+    } catch (err) {
+        console.error('[TaskSync] Failed to inject into copilot-instructions.md:', err);
+    }
+}
+
+/**
+ * Remove TaskSync section from .github/copilot-instructions.md
+ */
+async function removeFromCopilotInstructionsMd(): Promise<void> {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) return;
+
+    const filePath = vscode.Uri.joinPath(workspaceFolders[0].uri, '.github', 'copilot-instructions.md');
+
+    try {
+        const fileData = await vscode.workspace.fs.readFile(filePath);
+        const content = Buffer.from(fileData).toString('utf-8');
+
+        if (!content.includes(TASKSYNC_SECTION_START)) return;
+
+        const startIdx = content.indexOf(TASKSYNC_SECTION_START);
+        const endIdx = content.indexOf(TASKSYNC_SECTION_END);
+        if (startIdx === -1 || endIdx === -1) return;
+
+        // Remove the section (including surrounding newlines)
+        let before = content.substring(0, startIdx);
+        let after = content.substring(endIdx + TASKSYNC_SECTION_END.length);
+
+        // Clean up extra newlines
+        while (before.endsWith('\n\n')) before = before.slice(0, -1);
+        while (after.startsWith('\n\n')) after = after.substring(1);
+
+        const updatedContent = (before + after).trim();
+
+        if (updatedContent.length === 0 || updatedContent === '# Copilot Instructions') {
+            // File would be empty or just the header we created — delete it
+            await vscode.workspace.fs.delete(filePath);
+            console.log('[TaskSync] Removed copilot-instructions.md (was only TaskSync content)');
+        } else {
+            await vscode.workspace.fs.writeFile(filePath, Buffer.from(updatedContent + '\n', 'utf-8'));
+            console.log('[TaskSync] Removed TaskSync section from copilot-instructions.md');
+        }
+    } catch {
+        // File doesn't exist, nothing to remove
+    }
+}
+
+/**
+ * Inject TaskSync instructions into workspace-level codeGeneration.instructions setting
+ */
+function injectIntoCodeGenSettings(): void {
+    const instructionText = getInstructionText();
+    if (!instructionText.trim()) return;
+
+    // Create a concise version for the settings (settings warn about long instructions)
+    const settingsText = `${TASKSYNC_MARKER} ${instructionText}`;
+
+    const copilotConfig = vscode.workspace.getConfiguration('github.copilot.chat');
+    const currentInstructions = copilotConfig.get<Array<{ text?: string; file?: string }>>('codeGeneration.instructions', []);
+
+    const existingIndex = currentInstructions.findIndex(
+        (inst) => inst.text && inst.text.includes(TASKSYNC_MARKER)
+    );
+
+    if (existingIndex === -1) {
+        const updated = [...currentInstructions, { text: settingsText }];
+        copilotConfig.update('codeGeneration.instructions', updated, vscode.ConfigurationTarget.Workspace)
+            .then(
+                () => console.log('[TaskSync] Workspace settings instructions injected'),
+                (err: unknown) => console.error('[TaskSync] Failed to inject settings instructions:', err)
+            );
+    } else if (currentInstructions[existingIndex].text !== settingsText) {
+        const updated = [...currentInstructions];
+        updated[existingIndex] = { text: settingsText };
+        copilotConfig.update('codeGeneration.instructions', updated, vscode.ConfigurationTarget.Workspace)
+            .then(
+                () => console.log('[TaskSync] Workspace settings instructions updated'),
+                (err: unknown) => console.error('[TaskSync] Failed to update settings instructions:', err)
+            );
+    }
+}
+
+/**
+ * Remove TaskSync instructions from codeGeneration.instructions setting
+ */
+function removeFromCodeGenSettings(): void {
+    const copilotConfig = vscode.workspace.getConfiguration('github.copilot.chat');
+    const currentInstructions = copilotConfig.get<Array<{ text?: string; file?: string }>>('codeGeneration.instructions', []);
+
+    const filtered = currentInstructions.filter(
+        (inst) => !(inst.text && inst.text.includes(TASKSYNC_MARKER))
+    );
+
+    if (filtered.length !== currentInstructions.length) {
+        const newValue = filtered.length > 0 ? filtered : undefined;
+        copilotConfig.update('codeGeneration.instructions', newValue, vscode.ConfigurationTarget.Workspace)
+            .then(
+                () => console.log('[TaskSync] Removed settings instructions'),
+                (err: unknown) => console.error('[TaskSync] Failed to remove settings instructions:', err)
+            );
+    }
+}
+
+/**
+ * One-time migration: remove old Global-level TaskSync instructions
+ * (from previous version that used ConfigurationTarget.Global)
+ */
+function migrateGlobalToWorkspaceInstructions(): void {
+    const copilotConfig = vscode.workspace.getConfiguration('github.copilot.chat');
+
+    const globalInspected = copilotConfig.inspect<Array<{ text?: string; file?: string }>>('codeGeneration.instructions');
+    const globalInstructions = globalInspected?.globalValue;
+
+    if (globalInstructions && globalInstructions.some(inst => inst.text && inst.text.includes(TASKSYNC_MARKER))) {
+        const filtered = globalInstructions.filter(
+            (inst) => !(inst.text && inst.text.includes(TASKSYNC_MARKER))
+        );
+        const newValue = filtered.length > 0 ? filtered : undefined;
+        copilotConfig.update('codeGeneration.instructions', newValue, vscode.ConfigurationTarget.Global)
+            .then(
+                () => console.log('[TaskSync] Migrated: removed old global-level instructions'),
+                (err: unknown) => console.error('[TaskSync] Migration failed:', err)
+            );
+    }
 }
 
 export async function deactivate() {

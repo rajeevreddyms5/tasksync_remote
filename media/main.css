@@ -925,6 +925,14 @@ body {
     /* Allow autocomplete dropdown to overflow */
 }
 
+/* Drag-and-drop visual feedback for image drops */
+.drag-over-input {
+    outline: 2px dashed var(--vscode-focusBorder, #007fd4) !important;
+    outline-offset: -2px;
+    background: color-mix(in srgb, var(--vscode-focusBorder, #007fd4) 10%, transparent) !important;
+    transition: outline 0.15s ease, background 0.15s ease;
+}
+
 /* --- Autocomplete Dropdown --- */
 .autocomplete-dropdown {
     position: absolute;
@@ -2284,6 +2292,39 @@ button#send-btn:disabled {
     max-height: 150px;
 }
 
+.form-textarea.instruction-textarea {
+    min-height: 120px;
+    max-height: 300px;
+    font-family: var(--vscode-editor-font-family, 'Consolas', monospace);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.form-select {
+    width: 100%;
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-family: var(--vscode-font-family);
+    font-size: 13px;
+    cursor: pointer;
+    appearance: auto;
+}
+
+.form-select:focus {
+    outline: none;
+    border-color: var(--vscode-focusBorder);
+}
+
+.settings-section-description {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    margin-top: 4px;
+    line-height: 1.4;
+}
+
 .form-actions {
     display: flex;
     justify-content: flex-end;
@@ -2352,4 +2393,113 @@ button#send-btn:disabled {
     color: var(--vscode-descriptionForeground);
     font-size: 11px;
     font-style: italic;
+}
+
+/* ===== Plan Review Modal (sidebar/remote) ===== */
+.plan-review-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.plan-review-modal {
+    background: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, rgba(128,128,128,0.3)));
+    border-radius: 8px;
+    width: min(95vw, 700px);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.plan-review-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
+}
+
+.plan-review-title {
+    font-size: 14px;
+    font-weight: 600;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.plan-review-badge {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--vscode-textLink-foreground, #3794ff);
+    color: var(--vscode-button-foreground, #fff);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.plan-review-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    line-height: 1.6;
+    max-height: 40vh;
+}
+
+.plan-review-body h1, .plan-review-body h2, .plan-review-body h3 {
+    margin-top: 12px;
+    margin-bottom: 6px;
+}
+
+.plan-review-body p { margin: 4px 0; }
+.plan-review-body ul, .plan-review-body ol { padding-left: 20px; }
+
+.plan-review-comments {
+    border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
+    padding: 10px 16px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.plan-review-comments-header {
+    font-weight: 600;
+    font-size: 12px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.plan-review-comments-count {
+    font-size: 10px;
+    background: var(--vscode-textLink-foreground, #3794ff);
+    color: var(--vscode-button-foreground, #fff);
+    padding: 1px 6px;
+    border-radius: 8px;
+}
+
+.plan-review-comment-item {
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
+    border-radius: 4px;
+    padding: 6px 10px;
+    margin-bottom: 4px;
+}
+
+.plan-review-add-comment {
+    margin-top: 8px;
+}
+
+.plan-review-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
 }

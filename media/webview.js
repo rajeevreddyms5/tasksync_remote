@@ -68,6 +68,9 @@
     // Settings modal elements
     let settingsModal, settingsModalOverlay, settingsModalClose;
     let soundToggle, interactiveApprovalToggle, promptsList, addPromptBtn, addPromptForm;
+    let instructionInjectionSelect, instructionTextArea, instructionTextSaveBtn, instructionInjectBtn, instructionRemoveBtn, instructionResetBtn, instructionStatus;
+    let instructionInjection = 'off';
+    let instructionText = '';
 
     function init() {
         try {
@@ -374,6 +377,35 @@
             '<button class="form-btn form-btn-save" id="save-prompt-btn">Save</button></div></div>';
         modalContent.appendChild(promptsSection);
 
+        // Instruction Injection section
+        var instructionSection = document.createElement('div');
+        instructionSection.className = 'settings-section';
+        instructionSection.innerHTML = '<div class="settings-section-header">' +
+            '<div class="settings-section-title"><span class="codicon codicon-symbol-misc"></span> Instruction Injection</div>' +
+            '</div>' +
+            '<div class="settings-section-description">Injects TaskSync instructions into Copilot so it always calls ask_user and plan_review. Injection is applied at <strong>workspace level</strong> — it only affects this workspace. Choose a method and click Inject.</div>' +
+            '<div class="form-row" style="margin-top:8px;">' +
+            '<label class="form-label" for="instruction-injection-select">Method</label>' +
+            '<select class="form-select" id="instruction-injection-select">' +
+            '<option value="copilotInstructionsMd">copilot-instructions.md (Recommended)</option>' +
+            '<option value="codeGenerationSetting">Code Generation Setting</option>' +
+            '</select>' +
+            '</div>' +
+            '<div class="instruction-actions" style="margin-top:8px;display:flex;gap:8px;">' +
+            '<button class="form-btn form-btn-save" id="instruction-inject-btn">Inject</button>' +
+            '<button class="form-btn form-btn-cancel" id="instruction-remove-btn">Remove</button>' +
+            '</div>' +
+            '<div class="instruction-status" id="instruction-status" style="margin-top:6px;font-size:11px;"></div>' +
+            '<div class="form-row" style="margin-top:10px;">' +
+            '<label class="form-label" for="instruction-text-area">Instruction Text <span style="opacity:0.6;font-weight:normal;">(editable)</span></label>' +
+            '<textarea class="form-input form-textarea instruction-textarea" id="instruction-text-area" rows="8" placeholder="Enter the instruction text to inject..."></textarea>' +
+            '</div>' +
+            '<div class="form-actions" style="margin-top:6px;">' +
+            '<button class="form-btn form-btn-cancel" id="instruction-reset-btn" title="Reset to default instructions">Reset Default</button>' +
+            '<button class="form-btn form-btn-save" id="instruction-text-save-btn">Save Instructions</button>' +
+            '</div>';
+        modalContent.appendChild(instructionSection);
+
         // Assemble modal
         settingsModal.appendChild(modalHeader);
         settingsModal.appendChild(modalContent);
@@ -388,6 +420,13 @@
         promptsList = document.getElementById('prompts-list');
         addPromptBtn = document.getElementById('add-prompt-btn');
         addPromptForm = document.getElementById('add-prompt-form');
+        instructionInjectionSelect = document.getElementById('instruction-injection-select');
+        instructionTextArea = document.getElementById('instruction-text-area');
+        instructionTextSaveBtn = document.getElementById('instruction-text-save-btn');
+        instructionInjectBtn = document.getElementById('instruction-inject-btn');
+        instructionRemoveBtn = document.getElementById('instruction-remove-btn');
+        instructionResetBtn = document.getElementById('instruction-reset-btn');
+        instructionStatus = document.getElementById('instruction-status');
     }
 
     function bindEventListeners() {
@@ -399,6 +438,41 @@
             chatInput.addEventListener('scroll', function () {
                 if (inputHighlighter) {
                     inputHighlighter.scrollTop = chatInput.scrollTop;
+                }
+            });
+        }
+
+        // Drag-and-drop image support on the input area
+        var dropTarget = inputAreaContainer || chatInput;
+        if (dropTarget) {
+            dropTarget.addEventListener('dragover', function (e) {
+                if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    dropTarget.classList.add('drag-over-input');
+                }
+            });
+            dropTarget.addEventListener('dragenter', function (e) {
+                if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') !== -1) {
+                    e.preventDefault();
+                    dropTarget.classList.add('drag-over-input');
+                }
+            });
+            dropTarget.addEventListener('dragleave', function (e) {
+                // Only remove class if leaving the container entirely
+                if (!dropTarget.contains(e.relatedTarget)) {
+                    dropTarget.classList.remove('drag-over-input');
+                }
+            });
+            dropTarget.addEventListener('drop', function (e) {
+                dropTarget.classList.remove('drag-over-input');
+                if (!e.dataTransfer || !e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
+                e.preventDefault();
+                for (var i = 0; i < e.dataTransfer.files.length; i++) {
+                    var file = e.dataTransfer.files[i];
+                    if (file.type.indexOf('image/') === 0) {
+                        processImageFile(file);
+                    }
                 }
             });
         }
@@ -466,6 +540,32 @@
         var savePromptBtn = document.getElementById('save-prompt-btn');
         if (cancelPromptBtn) cancelPromptBtn.addEventListener('click', hideAddPromptForm);
         if (savePromptBtn) savePromptBtn.addEventListener('click', saveNewPrompt);
+
+        // Instruction injection events
+        if (instructionInjectBtn) {
+            instructionInjectBtn.addEventListener('click', function () {
+                if (instructionInjectionSelect) {
+                    vscode.postMessage({ type: 'updateInstructionInjection', method: instructionInjectionSelect.value });
+                }
+            });
+        }
+        if (instructionRemoveBtn) {
+            instructionRemoveBtn.addEventListener('click', function () {
+                vscode.postMessage({ type: 'updateInstructionInjection', method: 'off' });
+            });
+        }
+        if (instructionTextSaveBtn) {
+            instructionTextSaveBtn.addEventListener('click', function () {
+                if (instructionTextArea) {
+                    vscode.postMessage({ type: 'updateInstructionText', text: instructionTextArea.value });
+                }
+            });
+        }
+        if (instructionResetBtn) {
+            instructionResetBtn.addEventListener('click', function () {
+                vscode.postMessage({ type: 'resetInstructionText' });
+            });
+        }
 
         window.addEventListener('message', handleExtensionMessage);
         
@@ -823,9 +923,12 @@
                 soundEnabled = message.soundEnabled !== false;
                 interactiveApprovalEnabled = message.interactiveApprovalEnabled !== false;
                 reusablePrompts = message.reusablePrompts || [];
+                instructionInjection = message.instructionInjection || 'off';
+                instructionText = message.instructionText || '';
                 updateSoundToggleUI();
                 updateInteractiveApprovalToggleUI();
                 renderPromptsList();
+                updateInstructionUI();
                 break;
             case 'slashCommandResults':
                 showSlashDropdown(message.prompts || []);
@@ -855,6 +958,12 @@
             case 'clearProcessing':
                 // Clear the "Processing your response" state
                 clearProcessingState();
+                break;
+            case 'planReviewPending':
+                showPlanReviewModal(message.reviewId, message.title, message.plan);
+                break;
+            case 'planReviewCompleted':
+                closePlanReviewModal(message.reviewId);
                 break;
         }
     }
@@ -1749,6 +1858,24 @@
         interactiveApprovalToggle.setAttribute('aria-checked', interactiveApprovalEnabled ? 'true' : 'false');
     }
 
+    function updateInstructionUI() {
+        if (instructionInjectionSelect && instructionInjection !== 'off') {
+            instructionInjectionSelect.value = instructionInjection;
+        }
+        if (instructionTextArea) {
+            instructionTextArea.value = instructionText;
+        }
+        if (instructionStatus) {
+            if (instructionInjection === 'off') {
+                instructionStatus.innerHTML = '<span style="color:var(--vscode-descriptionForeground);">Status: Not injected</span>';
+            } else if (instructionInjection === 'copilotInstructionsMd') {
+                instructionStatus.innerHTML = '<span style="color:var(--vscode-charts-green, #89d185);"><span class="codicon codicon-check"></span> Injected into .github/copilot-instructions.md (workspace)</span>';
+            } else if (instructionInjection === 'codeGenerationSetting') {
+                instructionStatus.innerHTML = '<span style="color:var(--vscode-charts-green, #89d185);"><span class="codicon codicon-check"></span> Injected into Code Generation settings (workspace)</span>';
+            }
+        }
+    }
+
     function showAddPromptForm() {
         if (!addPromptForm || !addPromptBtn) return;
         addPromptForm.classList.remove('hidden');
@@ -1790,6 +1917,139 @@
         }
 
         hideAddPromptForm();
+    }
+
+    // ===== PLAN REVIEW MODAL (for remote/sidebar) =====
+
+    var activePlanReview = null; // { reviewId, overlay, comments }
+
+    function showPlanReviewModal(reviewId, title, plan) {
+        // Close existing if any
+        if (activePlanReview) {
+            closePlanReviewModal(activePlanReview.reviewId);
+        }
+
+        var comments = [];
+        var overlay = document.createElement('div');
+        overlay.className = 'plan-review-overlay';
+        overlay.innerHTML =
+            '<div class="plan-review-modal">' +
+            '<div class="plan-review-header">' +
+            '<span class="plan-review-title">' + escapeHtml(title || 'Plan Review') + '</span>' +
+            '<span class="plan-review-badge">Review</span>' +
+            '</div>' +
+            '<div class="plan-review-body" id="pr-body-' + reviewId + '"></div>' +
+            '<div class="plan-review-comments" id="pr-comments-' + reviewId + '">' +
+            '<div class="plan-review-comments-header">Comments <span class="plan-review-comments-count" id="pr-count-' + reviewId + '">0</span></div>' +
+            '<div class="plan-review-comments-list" id="pr-clist-' + reviewId + '"></div>' +
+            '<div class="plan-review-add-comment">' +
+            '<textarea class="form-input form-textarea" id="pr-comment-input-' + reviewId + '" placeholder="Add a comment about a specific part of the plan..." rows="2"></textarea>' +
+            '<textarea class="form-input" id="pr-comment-part-' + reviewId + '" placeholder="Which part of the plan? (e.g., Step 3)" rows="1" style="margin-top:4px;min-height:28px;"></textarea>' +
+            '<button class="form-btn form-btn-save" id="pr-add-comment-' + reviewId + '" style="margin-top:4px;">Add Comment</button>' +
+            '</div>' +
+            '</div>' +
+            '<div class="plan-review-footer">' +
+            '<button class="form-btn form-btn-cancel" id="pr-reject-' + reviewId + '" disabled>Request Changes</button>' +
+            '<button class="form-btn form-btn-save" id="pr-approve-' + reviewId + '">Approve</button>' +
+            '</div>' +
+            '</div>';
+
+        document.body.appendChild(overlay);
+
+        // Render plan content
+        var bodyEl = document.getElementById('pr-body-' + reviewId);
+        if (bodyEl) {
+            bodyEl.innerHTML = formatMessageContent(plan || '');
+        }
+
+        activePlanReview = { reviewId: reviewId, overlay: overlay, comments: comments };
+
+        // Bind events
+        var approveBtn = document.getElementById('pr-approve-' + reviewId);
+        var rejectBtn = document.getElementById('pr-reject-' + reviewId);
+        var addCommentBtn = document.getElementById('pr-add-comment-' + reviewId);
+
+        if (approveBtn) {
+            approveBtn.addEventListener('click', function () {
+                var action = comments.length > 0 ? 'approvedWithComments' : 'approved';
+                vscode.postMessage({ type: 'planReviewResponse', reviewId: reviewId, action: action, revisions: comments });
+                closePlanReviewModal(reviewId);
+            });
+        }
+
+        if (rejectBtn) {
+            rejectBtn.addEventListener('click', function () {
+                vscode.postMessage({ type: 'planReviewResponse', reviewId: reviewId, action: 'recreateWithChanges', revisions: comments });
+                closePlanReviewModal(reviewId);
+            });
+        }
+
+        if (addCommentBtn) {
+            addCommentBtn.addEventListener('click', function () {
+                var commentInput = document.getElementById('pr-comment-input-' + reviewId);
+                var partInput = document.getElementById('pr-comment-part-' + reviewId);
+                if (!commentInput || !partInput) return;
+                var instruction = commentInput.value.trim();
+                var part = partInput.value.trim();
+                if (!instruction) return;
+                comments.push({ revisedPart: part || '(general)', revisorInstructions: instruction });
+                commentInput.value = '';
+                partInput.value = '';
+                renderPlanReviewComments(reviewId, comments);
+                // Update button states
+                if (rejectBtn) rejectBtn.disabled = false;
+                if (approveBtn) approveBtn.textContent = 'Approve with Comments';
+            });
+        }
+
+        // Close on overlay click
+        overlay.addEventListener('click', function (e) {
+            if (e.target === overlay) {
+                vscode.postMessage({ type: 'planReviewResponse', reviewId: reviewId, action: 'closed', revisions: comments });
+                closePlanReviewModal(reviewId);
+            }
+        });
+    }
+
+    function renderPlanReviewComments(reviewId, comments) {
+        var countEl = document.getElementById('pr-count-' + reviewId);
+        var listEl = document.getElementById('pr-clist-' + reviewId);
+        if (countEl) countEl.textContent = comments.length;
+        if (!listEl) return;
+
+        if (comments.length === 0) {
+            listEl.innerHTML = '<div style="font-size:11px;opacity:0.5;font-style:italic;">No comments yet.</div>';
+            return;
+        }
+
+        listEl.innerHTML = comments.map(function (c, i) {
+            return '<div class="plan-review-comment-item">' +
+                '<div style="font-size:11px;opacity:0.7;font-style:italic;border-left:2px solid var(--vscode-textLink-foreground, #3794ff);padding-left:6px;">' + escapeHtml(c.revisedPart) + '</div>' +
+                '<div style="font-size:12px;margin-top:2px;">' + escapeHtml(c.revisorInstructions) + '</div>' +
+                '<button class="pr-remove-comment" data-index="' + i + '" style="font-size:11px;background:none;border:none;color:var(--vscode-textLink-foreground);cursor:pointer;padding:2px 4px;">Remove</button>' +
+                '</div>';
+        }).join('');
+
+        // Bind remove buttons
+        listEl.querySelectorAll('.pr-remove-comment').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var idx = parseInt(btn.getAttribute('data-index'));
+                comments.splice(idx, 1);
+                renderPlanReviewComments(reviewId, comments);
+                var rejectBtn = document.getElementById('pr-reject-' + reviewId);
+                var approveBtn = document.getElementById('pr-approve-' + reviewId);
+                if (rejectBtn) rejectBtn.disabled = comments.length === 0;
+                if (approveBtn) approveBtn.textContent = comments.length > 0 ? 'Approve with Comments' : 'Approve';
+            });
+        });
+    }
+
+    function closePlanReviewModal(reviewId) {
+        if (!activePlanReview || activePlanReview.reviewId !== reviewId) return;
+        if (activePlanReview.overlay && activePlanReview.overlay.parentNode) {
+            activePlanReview.overlay.parentNode.removeChild(activePlanReview.overlay);
+        }
+        activePlanReview = null;
     }
 
     function renderPromptsList() {

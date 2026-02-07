@@ -9,6 +9,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import { TaskSyncWebviewProvider } from '../webview/webviewProvider';
 import { askUser } from '../tools';
+import { planReview } from '../planReview';
 import { getImageMimeType } from '../utils/imageUtils';
 
 
@@ -52,9 +53,14 @@ export class McpServerManager {
     private transport: StreamableHTTPServerTransport | undefined;
     private _isRunning: boolean = false;
 
+    private extensionUri: vscode.Uri | undefined;
+
     constructor(
-        private provider: TaskSyncWebviewProvider
-    ) { }
+        private provider: TaskSyncWebviewProvider,
+        extensionUri?: vscode.Uri
+    ) {
+        this.extensionUri = extensionUri;
+    }
 
     /**
      * Check if MCP server is currently running
@@ -130,6 +136,48 @@ export class McpServerManager {
                 }
             );
 
+
+            // Register plan_review tool
+            if (this.extensionUri) {
+                const extensionUri = this.extensionUri;
+                const webviewProvider = this.provider;
+                (this.mcpServer as any).registerTool(
+                    "plan_review",
+                    {
+                        description: "Present a plan or detailed content to the user for review in a dedicated panel. The user can approve, approve with comments/suggestions, or request changes with targeted comments. Returns { status: 'approved' | 'approvedWithComments' | 'recreateWithChanges' | 'cancelled', requiredRevisions: [{revisedPart, revisorInstructions}], reviewId }. If 'approvedWithComments', proceed but incorporate the suggestions.",
+                        inputSchema: z.object({
+                            plan: z.string()
+                                .min(1, "Plan content cannot be empty")
+                                .describe("The detailed plan in Markdown format to present to the user for review. Use headers, bullet points, and code blocks for clarity."),
+                            title: z.string()
+                                .optional()
+                                .describe("Optional title for the review panel. Defaults to 'Plan Review'.")
+                        })
+                    },
+                    async (args: { plan: string; title?: string }, extra: { signal?: AbortSignal }) => {
+                        const tokenSource = new vscode.CancellationTokenSource();
+                        if (extra.signal) {
+                            extra.signal.onabort = () => tokenSource.cancel();
+                        }
+
+                        const result = await planReview(
+                            {
+                                plan: args.plan,
+                                title: args.title
+                            },
+                            extensionUri,
+                            tokenSource.token,
+                            webviewProvider
+                        );
+
+                        return {
+                            content: [
+                                { type: 'text', text: JSON.stringify(result) }
+                            ]
+                        };
+                    }
+                );
+            }
 
             // Create transport
             this.transport = new StreamableHTTPServerTransport({
