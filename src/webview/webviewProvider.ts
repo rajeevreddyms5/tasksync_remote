@@ -389,7 +389,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             title,
             plan
         };
-        this._view?.webview.postMessage(message);
+        // Only broadcast to remote clients - dedicated VS Code panel handles IDE
         this._broadcastCallback?.(message);
     }
 

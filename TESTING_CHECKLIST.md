@@ -57,7 +57,7 @@ Before testing:
 | 4 | Change text to "Edited prompt 1" and save | Queue item updates with new text |
 | 5 | Drag first item below the last item | Items reorder (drag and drop) |
 
-### 2.4 Clear Queue
+### 2.4 Clear Queue (NOT PRESENT - ALSO NOT NEEDED)
 | Step | Action | Expected Result |
 |------|--------|-----------------|
 | 1 | Click the 🗑️ (Clear) button in title bar | Confirmation dialog appears |
@@ -320,6 +320,35 @@ After completing all tests, verify:
 - [ ] All settings toggles work
 - [ ] Reusable prompts work
 - [ ] Error states handled gracefully
+
+---
+
+## Part 11: Plan Review Testing
+
+### 11.1 Modal Bug Fix Verification
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Trigger a plan review (use Copilot to create a plan) | Dedicated VS Code panel opens for review |
+| 2 | Check TaskSync sidebar | NO fullscreen modal appears in sidebar |
+| 3 | Cancel the dedicated panel | Plan review is cancelled, AI stops execution |
+| 4 | Check remote client (if available) | Plan review modal appears on remote device |
+
+### 11.2 Cancellation Behavior
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Start a plan review | Panel opens |
+| 2 | Click "Cancel" in the panel | Panel closes, status shows as "cancelled" |
+| 3 | Verify AI behavior | AI calls `ask_user` and stops execution |
+
+### 11.3 Comment Saving with Enter Key
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Open plan review panel | Panel displays with comment input |
+| 2 | Type a comment in the textarea | Text appears |
+| 3 | Press Enter | Comment is added to the list, input clears |
+| 4 | Type another comment | Text appears |
+| 5 | Press Shift+Enter | New line added in textarea |
+| 6 | Click "Add Comment" button | Comment is added (existing functionality) |
 
 ---
 

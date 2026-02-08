@@ -2144,6 +2144,12 @@
     function toggleMobileNotificationSetting() {
         mobileNotificationEnabled = !mobileNotificationEnabled;
         updateMobileNotificationToggleUI();
+        // Request notification permission immediately on user gesture (required by browsers)
+        if (mobileNotificationEnabled && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+            Notification.requestPermission().then(function(permission) {
+                console.log('[TaskSync] Notification permission:', permission);
+            });
+        }
         vscode.postMessage({ type: 'updateMobileNotificationSetting', enabled: mobileNotificationEnabled });
     }
 
@@ -2378,7 +2384,19 @@
             });
         }
 
-        // Do NOT close on overlay click — require explicit Cancel/Close
+        // Keyboard support
+        var commentInput = document.getElementById('pr-comment-input-' + reviewId);
+        var partInput = document.getElementById('pr-comment-part-' + reviewId);
+
+        // Enter in part input moves focus to comment input
+        if (partInput) {
+            partInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (commentInput) commentInput.focus();
+                }
+            });
+        }
     }
 
     function updatePlanReviewButtons(reviewId, comments) {
