@@ -539,13 +539,7 @@
         hint.innerHTML = 'Type <code>/</code> in the input to use a prompt. Prompts are expanded before sending.';
         content.appendChild(hint);
 
-        // Prompts list
-        promptsModalList = document.createElement('div');
-        promptsModalList.className = 'prompts-modal-list';
-        promptsModalList.id = 'prompts-modal-list';
-        content.appendChild(promptsModalList);
-
-        // Add/Edit form
+        // Add/Edit form (moved BEFORE list for better UX)
         promptsModalAddForm = document.createElement('div');
         promptsModalAddForm.className = 'prompts-modal-add-form hidden';
         promptsModalAddForm.id = 'prompts-modal-add-form';
@@ -558,6 +552,12 @@
             '<button class="form-btn form-btn-cancel" id="pm-cancel-btn">Cancel</button>' +
             '<button class="form-btn form-btn-save" id="pm-save-btn">Save</button></div>';
         content.appendChild(promptsModalAddForm);
+
+        // Prompts list
+        promptsModalList = document.createElement('div');
+        promptsModalList.className = 'prompts-modal-list';
+        promptsModalList.id = 'prompts-modal-list';
+        content.appendChild(promptsModalList);
 
         // Assemble
         promptsModal.appendChild(header);
@@ -2748,11 +2748,16 @@
     }
 
     function closePlanReviewModal(reviewId) {
-        if (!activePlanReview || activePlanReview.reviewId !== reviewId) return;
+        console.log('[FlowCommand] closePlanReviewModal called with:', reviewId, 'activePlanReview:', activePlanReview ? activePlanReview.reviewId : null);
+        if (!activePlanReview || activePlanReview.reviewId !== reviewId) {
+            console.log('[FlowCommand] closePlanReviewModal: no matching modal to close');
+            return;
+        }
         if (activePlanReview.overlay && activePlanReview.overlay.parentNode) {
             activePlanReview.overlay.parentNode.removeChild(activePlanReview.overlay);
         }
         activePlanReview = null;
+        console.log('[FlowCommand] closePlanReviewModal: modal closed');
     }
 
     // Multi-question modal
@@ -2964,42 +2969,56 @@
         }
 
         promptsModalList.innerHTML = reusablePrompts.map(function (p, index) {
-            var promptPreview = p.prompt.length > 200 ? p.prompt.substring(0, 200) + '...' : p.prompt;
-            var templateBadge = p.isTemplate ? '<span class="template-badge" title="Auto-appended to all prompts"><span class="codicon codicon-pinned"></span> Template</span>' : '';
-            var templateBtnText = p.isTemplate ? 'Unset Template' : 'Set as Template';
+            var promptPreview = p.prompt.length > 60 ? p.prompt.substring(0, 60) + '...' : p.prompt;
+            var templateBadge = p.isTemplate ? '<span class="template-badge" title="Auto-appended to all prompts"><span class="codicon codicon-pinned"></span></span>' : '';
+            var templateBtnTitle = p.isTemplate ? 'Unset Template' : 'Set as Template';
             var templateBtnClass = p.isTemplate ? 'pm-template-btn active' : 'pm-template-btn';
             return '<div class="prompt-card' + (p.isTemplate ? ' is-template' : '') + '" data-id="' + escapeHtml(p.id) + '">' +
                 '<div class="prompt-card-header">' +
                 '<span class="prompt-card-name">/' + escapeHtml(p.name) + '</span>' +
+                '<span class="prompt-card-preview">' + escapeHtml(promptPreview) + '</span>' +
                 templateBadge +
-                '<span class="prompt-card-index">#' + (index + 1) + '</span>' +
+                '<div class="prompt-card-actions-inline">' +
+                '<button class="prompt-card-btn-icon ' + templateBtnClass + '" data-id="' + escapeHtml(p.id) + '" title="' + templateBtnTitle + '"><span class="codicon codicon-pinned"></span></button>' +
+                '<button class="prompt-card-btn-icon pm-edit-btn" data-id="' + escapeHtml(p.id) + '" title="Edit"><span class="codicon codicon-edit"></span></button>' +
+                '<button class="prompt-card-btn-icon pm-delete-btn" data-id="' + escapeHtml(p.id) + '" title="Delete"><span class="codicon codicon-trash"></span></button>' +
                 '</div>' +
-                '<div class="prompt-card-text">' + escapeHtml(promptPreview) + '</div>' +
-                '<div class="prompt-card-actions">' +
-                '<button class="prompt-card-btn ' + templateBtnClass + '" data-id="' + escapeHtml(p.id) + '" title="' + templateBtnText + '"><span class="codicon codicon-pinned"></span> ' + templateBtnText + '</button>' +
-                '<button class="prompt-card-btn pm-edit-btn" data-id="' + escapeHtml(p.id) + '" title="Edit"><span class="codicon codicon-edit"></span> Edit</button>' +
-                '<button class="prompt-card-btn pm-delete-btn" data-id="' + escapeHtml(p.id) + '" title="Delete"><span class="codicon codicon-trash"></span> Delete</button>' +
+                '<span class="prompt-card-expand"><span class="codicon codicon-chevron-down"></span></span>' +
+                '</div>' +
+                '<div class="prompt-card-body">' +
+                '<div class="prompt-card-text">' + escapeHtml(p.prompt) + '</div>' +
                 '</div></div>';
         }).join('');
 
         // Bind template toggle
         promptsModalList.querySelectorAll('.pm-template-btn').forEach(function (btn) {
-            btn.addEventListener('click', function () {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
                 var id = btn.getAttribute('data-id');
                 togglePromptTemplate(id);
             });
         });
         // Bind edit/delete
         promptsModalList.querySelectorAll('.pm-edit-btn').forEach(function (btn) {
-            btn.addEventListener('click', function () {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
                 var id = btn.getAttribute('data-id');
                 editPromptInModal(id);
             });
         });
         promptsModalList.querySelectorAll('.pm-delete-btn').forEach(function (btn) {
-            btn.addEventListener('click', function () {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
                 var id = btn.getAttribute('data-id');
                 deletePrompt(id);
+            });
+        });
+        // Bind accordion expand/collapse on card click
+        promptsModalList.querySelectorAll('.prompt-card').forEach(function (card) {
+            card.addEventListener('click', function (e) {
+                // Don't toggle if clicking on action buttons
+                if (e.target.closest('.prompt-card-actions-inline')) return;
+                card.classList.toggle('expanded');
             });
         });
         
@@ -3630,9 +3649,11 @@
             var query = value.substring(hashPos + 1, cursorPos);
             autocompleteStartPos = hashPos;
             if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+            // Use shorter debounce for initial trigger (just #) to feel more responsive
+            var debounceMs = query.length === 0 ? 50 : 150;
             searchDebounceTimer = setTimeout(function () {
                 vscode.postMessage({ type: 'searchFiles', query: query });
-            }, 150);
+            }, debounceMs);
         } else if (autocompleteVisible) {
             hideAutocomplete();
         }

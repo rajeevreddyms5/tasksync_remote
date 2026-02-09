@@ -166,7 +166,7 @@ export class McpServerManager {
                 (this.mcpServer as any).registerTool(
                     "plan_review",
                     {
-                        description: "Present a plan or detailed content to the user for review in a dedicated panel. The user can approve, approve with comments/suggestions, or request changes with targeted comments. Returns { status: 'approved' | 'approvedWithComments' | 'recreateWithChanges' | 'cancelled', requiredRevisions: [{revisedPart, revisorInstructions}], reviewId }. If 'approvedWithComments', proceed but incorporate the suggestions.",
+                        description: "Present a plan or detailed content to the user for review in a dedicated panel. The user can approve, approve with comments/suggestions, or request changes with targeted comments. Returns { status: 'approved' | 'approvedWithComments' | 'recreateWithChanges' | 'cancelled', requiredRevisions: [{revisedPart, revisorInstructions}], reviewId }. CRITICAL: If 'approved' or 'approvedWithComments', proceed IMMEDIATELY — DO NOT call plan_review again. Only call plan_review again if 'recreateWithChanges'.",
                         inputSchema: z.object({
                             plan: z.string()
                                 .min(1, "Plan content cannot be empty")

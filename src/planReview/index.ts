@@ -4,6 +4,11 @@ import { FlowCommandWebviewProvider } from '../webview/webviewProvider';
 import { PlanReviewPanel } from './planReviewPanel';
 
 /**
+ * Timeout for plan review - 1 hour max to prevent indefinite hangs
+ */
+const PLAN_REVIEW_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
+
+/**
  * Unique ID generator for plan reviews
  */
 function generateReviewId(): string {
@@ -37,6 +42,7 @@ export function resolvePlanReview(reviewId: string, result: PlanReviewPanelResul
  * Core logic for plan review.
  * Opens dedicated editor panel in VS Code AND broadcasts to remote clients.
  * First response (VS Code or remote) wins.
+ * Includes 1-hour timeout to prevent indefinite hangs.
  */
 export async function planReview(
     params: PlanReviewInput,
@@ -46,7 +52,12 @@ export async function planReview(
 ): Promise<PlanReviewToolResult> {
     // Check if already cancelled
     if (token.isCancellationRequested) {
-        return { status: 'cancelled', requiredRevisions: [], reviewId: '' };
+        return { 
+            status: 'cancelled', 
+            requiredRevisions: [], 
+            reviewId: '',
+            nextStep: 'STOP: Plan review was already cancelled.'
+        };
     }
 
     const reviewId = generateReviewId();
@@ -70,6 +81,14 @@ export async function planReview(
         }
     });
 
+    // Create timeout promise to prevent indefinite hangs
+    let timeoutId: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(new Error('PLAN_REVIEW_TIMEOUT'));
+        }, PLAN_REVIEW_TIMEOUT_MS);
+    });
+
     try {
         // Play notification sound, show desktop notification, auto-focus, mobile notification
         if (webviewProvider) {
@@ -82,7 +101,7 @@ export async function planReview(
         }
 
         // Open dedicated VS Code editor panel AND set up remote response handling
-        // First response (VS Code panel or remote client) wins
+        // First response (VS Code panel, remote client, or timeout) wins
         const result = await Promise.race([
             // VS Code editor panel
             PlanReviewPanel.showWithOptions(extensionUri, {
@@ -95,8 +114,15 @@ export async function planReview(
             // Remote client response (sidebar/mobile/browser)
             new Promise<PlanReviewPanelResult>((resolve) => {
                 pendingReviews.set(reviewId, resolve);
-            })
+            }),
+            // Timeout after 1 hour to prevent indefinite hangs
+            timeoutPromise
         ]);
+
+        // Clear timeout since we got a response
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
 
         // Clean up the loser
         pendingReviews.delete(reviewId);
@@ -112,10 +138,28 @@ export async function planReview(
             ? result.action as PlanReviewToolResult['status']
             : 'cancelled';
 
+        // Generate instruction based on status to guide model behavior
+        let nextStepInstruction: string;
+        switch (status) {
+            case 'approved':
+                nextStepInstruction = 'PROCEED: Execute the plan immediately. Do NOT call plan_review again.';
+                break;
+            case 'approvedWithComments':
+                nextStepInstruction = 'PROCEED: Execute the plan immediately, incorporating the feedback. Do NOT call plan_review again.';
+                break;
+            case 'recreateWithChanges':
+                nextStepInstruction = 'REVISE: Update the plan based on feedback and call plan_review again with the revised plan.';
+                break;
+            case 'cancelled':
+            default:
+                nextStepInstruction = 'STOP: User cancelled. Do not proceed with this plan.';
+        }
+
         const toolResult: PlanReviewToolResult = {
             status,
             requiredRevisions: result.requiredRevisions,
-            reviewId
+            reviewId,
+            nextStep: nextStepInstruction
         };
 
         // Record plan review to session history
@@ -130,13 +174,38 @@ export async function planReview(
 
         return toolResult;
     } catch (error) {
+        // Clear timeout on error
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+
+        // Handle timeout specifically
+        if (error instanceof Error && error.message === 'PLAN_REVIEW_TIMEOUT') {
+            console.log('[FlowCommand] Plan review timed out after 1 hour:', reviewId);
+            // Broadcast timeout to dismiss remote modals
+            if (webviewProvider) {
+                webviewProvider.broadcastPlanReviewCompleted(reviewId, 'cancelled');
+            }
+            return {
+                status: 'cancelled',
+                requiredRevisions: [],
+                reviewId,
+                nextStep: 'STOP: Plan review timed out after 1 hour. No user response received.'
+            };
+        }
+
         console.error('[FlowCommand] Error in plan review:', error);
         return {
             status: 'cancelled',
             requiredRevisions: [],
-            reviewId
+            reviewId,
+            nextStep: 'STOP: Plan review cancelled due to error.'
         };
     } finally {
+        // Always clean up
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
         cancellationDisposable.dispose();
         pendingReviews.delete(reviewId);
         PlanReviewPanel.closeIfOpen(reviewId);

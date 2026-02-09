@@ -2269,10 +2269,14 @@ button#send-btn:disabled {
 /* Settings Section */
 .settings-section {
     margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed var(--vscode-panel-border);
 }
 
 .settings-section:last-child {
     margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
 }
 
 .settings-section-title {
@@ -3239,8 +3243,10 @@ button#send-btn:disabled {
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.3));
     border-radius: 6px;
-    padding: 10px 12px;
+    padding: 8px 10px;
     transition: border-color 0.15s;
+    cursor: pointer;
+    overflow: hidden;
 }
 
 .prompt-card:hover {
@@ -3250,19 +3256,79 @@ button#send-btn:disabled {
 .prompt-card-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 6px;
+    gap: 8px;
+    min-width: 0;
 }
 
 .prompt-card-name {
     font-weight: 600;
-    font-size: 13px;
+    font-size: 12px;
     color: var(--vscode-textLink-foreground, #3794ff);
+    flex-shrink: 0;
 }
 
-.prompt-card-index {
-    font-size: 10px;
+.prompt-card-preview {
+    flex: 1;
+    font-size: 11px;
+    opacity: 0.6;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.prompt-card.expanded .prompt-card-preview {
+    display: none;
+}
+
+.prompt-card-actions-inline {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.prompt-card-btn-icon {
+    background: none;
+    border: none;
+    color: var(--vscode-editor-foreground);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 3px;
+    opacity: 0.5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.prompt-card-btn-icon:hover {
+    opacity: 1;
+    background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.2));
+}
+
+.prompt-card-btn-icon.active {
+    color: var(--vscode-textLink-foreground, #3794ff);
+    opacity: 0.8;
+}
+
+.prompt-card-expand {
+    flex-shrink: 0;
     opacity: 0.4;
+    transition: transform 0.2s;
+}
+
+.prompt-card.expanded .prompt-card-expand {
+    transform: rotate(180deg);
+}
+
+.prompt-card-body {
+    display: none;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,0.15));
+}
+
+.prompt-card.expanded .prompt-card-body {
+    display: block;
 }
 
 .prompt-card-text {
@@ -3271,8 +3337,14 @@ button#send-btn:disabled {
     opacity: 0.75;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 100px;
-    overflow: hidden;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+/* Legacy styles for backwards compatibility */
+.prompt-card-index {
+    font-size: 10px;
+    opacity: 0.4;
 }
 
 .prompt-card-actions {
@@ -3306,14 +3378,14 @@ button#send-btn:disabled {
 .template-badge {
     display: inline-flex;
     align-items: center;
-    gap: 3px;
+    justify-content: center;
     font-size: 10px;
     font-weight: 500;
-    padding: 2px 6px;
+    padding: 2px 4px;
     background: var(--vscode-textLink-foreground, #3794ff);
     color: var(--vscode-editor-background, #1e1e1e);
-    border-radius: 8px;
-    margin-left: auto;
+    border-radius: 4px;
+    flex-shrink: 0;
 }
 
 .template-badge .codicon {
@@ -3380,11 +3452,15 @@ button#send-btn:disabled {
 }
 
 .prompts-modal-add-form {
-    margin-top: 12px;
+    margin-bottom: 12px;
     padding: 12px;
     background: var(--vscode-input-background);
     border: 1px solid var(--vscode-textLink-foreground, #3794ff);
     border-radius: 6px;
+}
+
+.prompts-modal-add-form.hidden {
+    display: none;
 }
 
 .prompts-modal-add-form .form-row { margin-bottom: 8px; }

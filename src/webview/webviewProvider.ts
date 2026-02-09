@@ -176,8 +176,13 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
     private readonly _HISTORY_SAVE_DEBOUNCE_MS = 2000; // 2 seconds debounce
     private _historyDirty: boolean = false; // Track if history needs saving
 
+    // Debounce timer for current session persistence (prevents loss on reload)
+    private _currentSessionSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    private readonly _CURRENT_SESSION_SAVE_DEBOUNCE_MS = 1000;
+
     // Performance limits
     private readonly _MAX_HISTORY_ENTRIES = 100;
+    private readonly _MAX_CURRENT_SESSION_ENTRIES = 200;
     private readonly _MAX_FILE_SEARCH_RESULTS = 500;
     private readonly _MAX_QUEUE_PROMPT_LENGTH = 100000; // 100KB for queue prompts
     private readonly _MAX_FOLDER_SEARCH_RESULTS = 1000;
@@ -255,6 +260,9 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         });
         this._loadPersistedHistoryFromDiskAsync().catch(err => {
             console.error('Failed to load history:', err);
+        });
+        this._loadCurrentSessionFromDiskAsync().catch(err => {
+            console.error('Failed to load current session:', err);
         });
         // Load settings (sync - fast operation)
         this._loadSettings();
@@ -369,6 +377,22 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
     }
 
     /**
+     * Trim current session history to prevent unbounded growth in the home view.
+     * Removes oldest entries and cleans up any temp attachments.
+     */
+    private _trimCurrentSessionCalls(): void {
+        if (this._currentSessionCalls.length <= this._MAX_CURRENT_SESSION_ENTRIES) {
+            return;
+        }
+
+        const removed = this._currentSessionCalls.splice(this._MAX_CURRENT_SESSION_ENTRIES);
+        for (const entry of removed) {
+            this._currentSessionCallsMap.delete(entry.id);
+        }
+        this._cleanupTempImagesFromEntries(removed);
+    }
+
+    /**
      * Record a plan review interaction in the session history.
      * Called from the plan_review tool after the user takes action.
      */
@@ -378,7 +402,9 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         if (revisions.length > 0) {
             responseSummary += `\nComments (${revisions.length}):`;
             for (const rev of revisions) {
-                responseSummary += `\n• "${rev.revisedPart.substring(0, 80)}..." → ${rev.revisorInstructions}`;
+                const revisedPart = typeof rev.revisedPart === 'string' ? rev.revisedPart : '';
+                const instructions = typeof rev.revisorInstructions === 'string' ? rev.revisorInstructions : '';
+                responseSummary += `\n• "${revisedPart.substring(0, 80)}..." → ${instructions}`;
             }
         }
 
@@ -394,6 +420,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
 
         this._currentSessionCalls.push(entry);
         this._currentSessionCallsMap.set(entry.id, entry);
+        this._trimCurrentSessionCalls();
         this._updateCurrentSessionUI();
 
         // Notify the webview
@@ -645,6 +672,11 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         if (this._queueSaveTimer) {
             clearTimeout(this._queueSaveTimer);
             this._queueSaveTimer = null;
+        }
+
+        if (this._currentSessionSaveTimer) {
+            clearTimeout(this._currentSessionSaveTimer);
+            this._currentSessionSaveTimer = null;
         }
 
         // Clear processing timeout
@@ -998,6 +1030,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 };
                 this._currentSessionCalls.unshift(entry);
                 this._currentSessionCallsMap.set(entry.id, entry); // Maintain O(1) lookup map
+                this._trimCurrentSessionCalls();
                 this._updateCurrentSessionUI();
                 this._currentToolCallId = null;
 
@@ -1023,6 +1056,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         };
         this._currentSessionCalls.unshift(pendingEntry);
         this._currentSessionCallsMap.set(toolCallId, pendingEntry); // O(1) lookup
+        this._trimCurrentSessionCalls();
 
         // Use explicit choices from the tool call if provided, otherwise parse from question text
         let choices: ParsedChoice[];
@@ -1177,6 +1211,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         };
         this._currentSessionCalls.unshift(pendingEntry);
         this._currentSessionCallsMap.set(requestId, pendingEntry);
+        this._trimCurrentSessionCalls();
 
         // Wait for webview to be ready
         if (!this._webviewReady) {
@@ -1442,6 +1477,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                     };
                     this._currentSessionCalls.unshift(completedEntry);
                     this._currentSessionCallsMap.set(completedEntry.id, completedEntry);
+                    this._trimCurrentSessionCalls();
                 }
 
                 // Send toolCallCompleted to trigger "Working...." state in webview
@@ -1966,6 +2002,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 };
                 this._currentSessionCalls.unshift(completedEntry);
                 this._currentSessionCallsMap.set(completedEntry.id, completedEntry);
+                this._trimCurrentSessionCalls();
             }
 
             // Send toolCallCompleted to webview
@@ -2688,6 +2725,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             type: 'updateCurrentSession',
             history: this._currentSessionCalls
         } as ToWebviewMessage);
+        this._saveCurrentSessionToDisk();
     }
 
     /**
@@ -2792,6 +2830,99 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         } catch (error) {
             console.error('[FlowCommand] Failed to load persisted history:', error);
             this._persistedHistory = [];
+        }
+    }
+
+    /**
+     * Load current session from disk (for recovery after reload/crash)
+     */
+    private async _loadCurrentSessionFromDiskAsync(): Promise<void> {
+        try {
+            const storagePath = this._context.globalStorageUri.fsPath;
+            const sessionPath = path.join(storagePath, 'current-session.json');
+
+            try {
+                await fs.promises.access(sessionPath, fs.constants.F_OK);
+            } catch {
+                this._currentSessionCalls = [];
+                this._currentSessionCallsMap.clear();
+                return;
+            }
+
+            const data = await fs.promises.readFile(sessionPath, 'utf8');
+            const parsed = JSON.parse(data);
+            const rawEntries = Array.isArray(parsed.history) ? parsed.history : [];
+
+            const recovered = rawEntries.map((entry: ToolCallEntry) => {
+                const safeAttachments = Array.isArray(entry.attachments)
+                    ? entry.attachments.filter(att => !att.isTemporary)
+                    : undefined;
+
+                if (entry.status === 'pending') {
+                    return {
+                        ...entry,
+                        status: 'cancelled',
+                        response: entry.response || '[Cancelled due to reload]',
+                        attachments: safeAttachments
+                    } as ToolCallEntry;
+                }
+
+                return {
+                    ...entry,
+                    attachments: safeAttachments
+                } as ToolCallEntry;
+            });
+
+            this._currentSessionCalls = recovered.slice(0, this._MAX_CURRENT_SESSION_ENTRIES);
+            this._currentSessionCallsMap.clear();
+            for (const entry of this._currentSessionCalls) {
+                this._currentSessionCallsMap.set(entry.id, entry);
+            }
+        } catch (error) {
+            console.error('[FlowCommand] Failed to load current session:', error);
+            this._currentSessionCalls = [];
+            this._currentSessionCallsMap.clear();
+        }
+    }
+
+    /**
+     * Save current session to disk (debounced)
+     */
+    private _saveCurrentSessionToDisk(): void {
+        if (this._currentSessionSaveTimer) {
+            clearTimeout(this._currentSessionSaveTimer);
+        }
+        this._currentSessionSaveTimer = setTimeout(() => {
+            this._saveCurrentSessionToDiskAsync();
+        }, this._CURRENT_SESSION_SAVE_DEBOUNCE_MS);
+    }
+
+    /**
+     * Async save current session (non-blocking)
+     */
+    private async _saveCurrentSessionToDiskAsync(): Promise<void> {
+        try {
+            const storagePath = this._context.globalStorageUri.fsPath;
+            const sessionPath = path.join(storagePath, 'current-session.json');
+
+            const fsPromises = await import('fs/promises');
+            try {
+                await fsPromises.access(storagePath);
+            } catch {
+                await fsPromises.mkdir(storagePath, { recursive: true });
+            }
+
+            const sanitizedHistory = this._currentSessionCalls.map(entry => ({
+                ...entry,
+                attachments: Array.isArray(entry.attachments)
+                    ? entry.attachments.filter(att => !att.isTemporary)
+                    : undefined
+            }));
+
+            const data = JSON.stringify({ history: sanitizedHistory }, null, 2);
+            await fsPromises.writeFile(sessionPath, data, 'utf8');
+        } catch (error) {
+            console.error('[FlowCommand] Failed to save current session:', error);
         }
     }
 
@@ -3044,6 +3175,25 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         // If more options detected, return empty array (show only text input)
         const MAX_CHOICES = 9;
 
+        // EARLY EXIT: Detect long lists before expensive parsing
+        // Count potential numbered markers (1. 2. 3. etc.) - if 10+, skip buttons entirely
+        const numberedMarkerCount = (text.match(/\b\d+[.)]/g) || []).length;
+        if (numberedMarkerCount >= 10) {
+            return []; // Too many options for button display
+        }
+        
+        // Also check for lettered markers (A. B. C. etc.)
+        const letteredMarkerCount = (text.match(/\b[A-Za-z][.)]\s/g) || []).length;
+        if (letteredMarkerCount >= 10) {
+            return []; // Too many options for button display
+        }
+
+        // Check for multiple question blocks (don't show buttons for compound questions)
+        const questionBlockCount = (text.match(/\b(?:Question|Q)\s*\d+[.:]/gi) || []).length;
+        if (questionBlockCount >= 2) {
+            return []; // Multiple questions - user should type combined answer
+        }
+
         // Search the ENTIRE text for numbered/lettered lists, not just after the last "?"
         // The previous approach failed when examples within the text contained "?" characters
         // (e.g., "Example: What's your favorite language?")
@@ -3101,10 +3251,12 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 for (const m of firstGroup) {
                     let cleanText = m.text.replace(/[?!]+$/, '').trim();
                     const displayText = cleanText.length > 40 ? cleanText.substring(0, 37) + '...' : cleanText;
+                    // Show option text on button, not just number
+                    const shortDisplay = cleanText.length > 20 ? cleanText.substring(0, 17) + '...' : cleanText;
                     choices.push({
                         label: displayText,
                         value: m.num,
-                        shortLabel: m.num
+                        shortLabel: shortDisplay
                     });
                 }
                 return choices.length > MAX_CHOICES ? [] : choices;
@@ -3129,10 +3281,11 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             for (const m of inlineNumberedMatches) {
                 let cleanText = m.text.replace(/[?!]+$/, '').trim();
                 const displayText = cleanText.length > 40 ? cleanText.substring(0, 37) + '...' : cleanText;
+                const shortDisplay = cleanText.length > 20 ? cleanText.substring(0, 17) + '...' : cleanText;
                 choices.push({
                     label: displayText,
                     value: m.num,
-                    shortLabel: m.num
+                    shortLabel: shortDisplay
                 });
             }
             return choices.length > MAX_CHOICES ? [] : choices;
@@ -3150,7 +3303,6 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 emojiLines.push({ index: i, num: m[1], text: cleanText });
             }
         }
-
         if (emojiLines.length >= 2) {
             // Find contiguous emoji list (first group)
             const listBoundaries: number[] = [0];
@@ -3168,10 +3320,11 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 for (const m of firstGroup) {
                     let cleanText = m.text.replace(/[?!]+$/, '').trim();
                     const displayText = cleanText.length > 40 ? cleanText.substring(0, 37) + '...' : cleanText;
+                    const shortDisplay = cleanText.length > 20 ? cleanText.substring(0, 17) + '...' : cleanText;
                     choices.push({
                         label: displayText,
                         value: m.num,
-                        shortLabel: m.num
+                        shortLabel: shortDisplay
                     });
                 }
                 return choices.length > MAX_CHOICES ? [] : choices;
@@ -3194,10 +3347,11 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             for (const m of inlineEmojiMatches) {
                 let cleanText = m.text.replace(/[?!]+$/, '').trim();
                 const displayText = cleanText.length > 40 ? cleanText.substring(0, 37) + '...' : cleanText;
+                const shortDisplay = cleanText.length > 20 ? cleanText.substring(0, 17) + '...' : cleanText;
                 choices.push({
                     label: displayText,
                     value: m.num,
-                    shortLabel: m.num
+                    shortLabel: shortDisplay
                 });
             }
             return choices.length > MAX_CHOICES ? [] : choices;
@@ -3238,10 +3392,11 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 for (const m of firstGroup) {
                     let cleanText = m.text.replace(/[?!]+$/, '').trim();
                     const displayText = cleanText.length > 40 ? cleanText.substring(0, 37) + '...' : cleanText;
+                    const shortDisplay = cleanText.length > 20 ? cleanText.substring(0, 17) + '...' : cleanText;
                     choices.push({
                         label: displayText,
                         value: m.letter,
-                        shortLabel: m.letter
+                        shortLabel: shortDisplay
                     });
                 }
                 return choices.length > MAX_CHOICES ? [] : choices;
@@ -3265,10 +3420,11 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             for (const m of inlineLetteredMatches) {
                 let cleanText = m.text.replace(/[?!]+$/, '').trim();
                 const displayText = cleanText.length > 40 ? cleanText.substring(0, 37) + '...' : cleanText;
+                const shortDisplay = cleanText.length > 20 ? cleanText.substring(0, 17) + '...' : cleanText;
                 choices.push({
                     label: displayText,
                     value: m.letter,
-                    shortLabel: m.letter
+                    shortLabel: shortDisplay
                 });
             }
             return choices.length > MAX_CHOICES ? [] : choices;
@@ -3322,28 +3478,37 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
 
         // Pattern 2d: Inline bullet options "- item1 - item2 - item3"
         // Common in conversational prompts like "Database? - PostgreSQL - MongoDB - SQLite"
-        const inlineBulletPattern = /(?:^|[?:]\s*)\s*-\s+([^-]+?)(?=\s+-\s+|[.?!]?\s*$)/g;
-        const inlineBulletMatches: { text: string }[] = [];
-
-        while ((match = inlineBulletPattern.exec(singleLine)) !== null) {
-            const optionText = match[1].trim();
-            if (optionText.length >= 2) {
-                inlineBulletMatches.push({ text: optionText });
+        // Use a split-based approach instead of complex regex for reliability
+        
+        // Check if there's a question/colon followed by bullet items
+        const bulletSectionMatch = singleLine.match(/[?:]\s*(-\s+.+?)(?:\.\s*(?:Wait|wait|Please|please)|[.?!]?\s*$)/);
+        if (bulletSectionMatch) {
+            const bulletSection = bulletSectionMatch[1];
+            // Split by " - " to get individual items
+            const bulletParts = bulletSection.split(/\s+-\s+/);
+            const inlineBulletMatches: { text: string }[] = [];
+            
+            for (const part of bulletParts) {
+                const trimmed = part.trim();
+                // Skip empty parts and common filler words
+                if (trimmed.length >= 2 && !/^(wait|please|response|for|choice|select)/i.test(trimmed)) {
+                    inlineBulletMatches.push({ text: trimmed });
+                }
             }
-        }
 
-        if (inlineBulletMatches.length >= 2) {
-            for (const m of inlineBulletMatches) {
-                let cleanText = m.text.replace(/[?!]+$/, '').trim();
-                const displayText = cleanText.length > 40 ? cleanText.substring(0, 37) + '...' : cleanText;
-                const shortDisplay = cleanText.length > 20 ? cleanText.substring(0, 17) + '...' : cleanText;
-                choices.push({
-                    label: displayText,
-                    value: cleanText, // Use actual text as value for bullet points
-                    shortLabel: shortDisplay // Show actual option text on button
-                });
+            if (inlineBulletMatches.length >= 2) {
+                for (const m of inlineBulletMatches) {
+                    let cleanText = m.text.replace(/[?!]+$/, '').trim();
+                    const displayText = cleanText.length > 40 ? cleanText.substring(0, 37) + '...' : cleanText;
+                    const shortDisplay = cleanText.length > 20 ? cleanText.substring(0, 17) + '...' : cleanText;
+                    choices.push({
+                        label: displayText,
+                        value: cleanText, // Use actual text as value for bullet points
+                        shortLabel: shortDisplay // Show actual option text on button
+                    });
+                }
+                return choices.length > MAX_CHOICES ? [] : choices;
             }
-            return choices.length > MAX_CHOICES ? [] : choices;
         }
 
         // Pattern 3: "Option A:" or "Option 1:" style (supports multi-digit numbers like Option 10)

@@ -64,6 +64,12 @@ export class RemoteUiServer implements vscode.Disposable {
     private _fileWatchers: vscode.Disposable[] = [];
     private _terminalWatchers: vscode.Disposable[] = [];
 
+    // File change debounce to reduce broadcast load for remote clients
+    private _fileChangeDebounceTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+    private _pendingFileChanges: Map<string, RemoteMessage> = new Map();
+    private readonly _FILE_CHANGE_DEBOUNCE_MS = 250;
+    private readonly _MAX_FILE_CHANGE_BYTES = 200 * 1024; // 200KB
+
     constructor(
         private readonly _extensionUri: vscode.Uri,
         private readonly _context: vscode.ExtensionContext
@@ -372,12 +378,18 @@ export class RemoteUiServer implements vscode.Disposable {
                     const relativePath = vscode.workspace.asRelativePath(e.document.uri);
                     // Skip if outside workspace or is settings file
                     if (relativePath.startsWith('..') || relativePath.includes('.vscode')) return;
-                    
-                    this.broadcast({
+
+                    const content = e.document.getText();
+                    const contentBytes = Buffer.byteLength(content, 'utf8');
+                    const payload: RemoteMessage = {
                         type: 'fileChanged',
                         path: relativePath,
-                        content: e.document.getText()
-                    });
+                        content: contentBytes <= this._MAX_FILE_CHANGE_BYTES ? content : '',
+                        contentBytes,
+                        truncated: contentBytes > this._MAX_FILE_CHANGE_BYTES
+                    };
+
+                    this._queueFileChangeBroadcast(relativePath, payload);
                 } catch (err) {
                     console.error('[FlowCommand Remote] File change watcher error:', err);
                 }
@@ -791,7 +803,9 @@ export class RemoteUiServer implements vscode.Disposable {
             console.log('[FlowCommand Remote] broadcast: No io instance');
             return;
         }
-        console.log('[FlowCommand Remote] Broadcasting to', this._authenticatedSockets.size, 'clients:', message.type);
+        if (message.type !== 'fileChanged') {
+            console.log('[FlowCommand Remote] Broadcasting to', this._authenticatedSockets.size, 'clients:', message.type);
+        }
         for (const socketId of this._authenticatedSockets) {
             this._io.to(socketId).emit('message', message);
         }
@@ -2286,9 +2300,6 @@ self.addEventListener('fetch', event => {
             <span class="remote-header-title">FlowCommand</span>
         </div>
         <div class="remote-header-actions">
-            <button class="remote-header-btn" id="notification-permission-btn" title="Enable Notifications" style="display:none;">
-                <span class="codicon codicon-bell-dot"></span>
-            </button>
             <button class="remote-header-btn" id="remote-refresh-btn" title="Refresh">
                 <span class="codicon codicon-refresh"></span>
             </button>
@@ -2300,6 +2311,9 @@ self.addEventListener('fetch', event => {
             </button>
             <button class="remote-header-btn" id="theme-toggle-btn" title="Toggle Theme">
                 <span class="codicon codicon-symbol-color"></span>
+            </button>
+            <button class="remote-header-btn" id="notification-permission-btn" title="Enable Notifications" style="display:none;">
+                <span class="codicon codicon-bell-dot"></span>
             </button>
             <button class="remote-header-btn" id="remote-logout-btn" title="Logout">
                 <span class="codicon codicon-sign-out"></span>
@@ -2627,7 +2641,14 @@ self.addEventListener('fetch', event => {
         }
 
         function getIosNotificationHelp() {
-            return 'iOS Safari requires iOS 16.4+, adding this app to Home Screen, and granting permission via the bell button.';
+            if (isStandaloneMode()) {
+                return 'You are in PWA mode but notifications may still be blocked. Try: Settings → Safari → Advanced → Experimental Features → Push API (enable). Then reload this page.';
+            }
+            return 'To enable notifications on iOS: 1) Tap the Share button, 2) Select "Add to Home Screen", 3) Open from the Home Screen icon, 4) Tap the bell button.';
+        }
+
+        function getDesktopNotificationHelp() {
+            return 'Notifications blocked. Click the lock/info icon in the URL bar → Site Settings → Notifications → Allow. Then reload.';
         }
 
         function requestNotificationPermission() {
@@ -2635,6 +2656,16 @@ self.addEventListener('fetch', event => {
                 Notification.requestPermission().then(function(permission) {
                     console.log('[FlowCommand] Notification permission:', permission);
                     updateNotificationButton();
+                    // Show immediate feedback
+                    if (permission === 'granted') {
+                        showVisualNotification('Notifications enabled! You will receive alerts when Copilot asks questions.');
+                    } else if (permission === 'denied') {
+                        // Don't show error - user explicitly denied, they know
+                        console.log('[FlowCommand] User denied notification permission');
+                    }
+                }).catch(function(err) {
+                    console.error('[FlowCommand] Notification permission request failed:', err);
+                    // Silently fall back to visual notifications
                 });
             }
         }
@@ -2682,29 +2713,35 @@ self.addEventListener('fetch', event => {
             if (notifBtn) {
                 notifBtn.addEventListener('click', function() {
                     if (!('Notification' in window)) {
-                        showVisualNotification('This browser does not support notifications.');
+                        showVisualNotification('Push notifications not supported. Visual alerts will be used instead.');
                         return;
                     }
                     if (Notification.permission === 'default') {
                         if (isIOSSafari() && !isStandaloneMode()) {
                             var iosHelp = getIosNotificationHelp();
-                            alert(iosHelp);
                             showVisualNotification(iosHelp);
                             return;
                         }
                         requestNotificationPermission();
                     } else if (Notification.permission === 'denied') {
+                        // Show helpful guidance instead of generic error
                         if (isIOSSafari()) {
                             var help = getIosNotificationHelp();
-                            alert(help);
                             showVisualNotification(help);
                         } else {
-                            alert('Notifications are blocked. Please enable them in your browser settings.');
-                            showVisualNotification('Notifications are blocked. Enable them in your browser settings.');
+                            var desktopHelp = getDesktopNotificationHelp();
+                            showVisualNotification(desktopHelp);
                         }
                     } else {
-                        // Already granted, just show a confirmation
-                        showVisualNotification('Test notification - Push notifications are enabled!');
+                        // Already granted - show test notification
+                        try {
+                            new Notification('FlowCommand Test', {
+                                body: 'Notifications are working!',
+                                icon: '/media/FC-logo.svg'
+                            });
+                        } catch (e) {
+                            showVisualNotification('Native notifications failed, using visual alerts.');
+                        }
                     }
                 });
             }
@@ -2958,7 +2995,7 @@ self.addEventListener('fetch', event => {
             });
             
             socket.on('message', (message) => {
-                console.log('[FlowCommand] Received message:', message.type);
+                console.log('[FlowCommand] Socket received message:', message.type, message.reviewId ? 'reviewId:' + message.reviewId : '');
                 
                 // Handle theme updates
                 if (message.type === 'updateTheme' && message.theme) {
@@ -2967,7 +3004,10 @@ self.addEventListener('fetch', event => {
                 }
                 
                 if (window.dispatchVSCodeMessage) {
+                    console.log('[FlowCommand] Dispatching to webview:', message.type);
                     window.dispatchVSCodeMessage(message);
+                } else {
+                    console.log('[FlowCommand] WARNING: dispatchVSCodeMessage not available');
                 }
                 // Trigger mobile browser notification for toolCallPending or planReviewPending
                 if ((message.type === 'toolCallPending' || message.type === 'planReviewPending') && window.mobileNotificationEnabled) {
@@ -3577,6 +3617,13 @@ self.addEventListener('fetch', event => {
      */
     public stop(): void {
         this._unregisterSession();
+
+        // Clear pending file change broadcasts
+        for (const timer of this._fileChangeDebounceTimers.values()) {
+            clearTimeout(timer);
+        }
+        this._fileChangeDebounceTimers.clear();
+        this._pendingFileChanges.clear();
         
         // Dispose file watchers
         for (const watcher of this._fileWatchers) {
@@ -3606,6 +3653,29 @@ self.addEventListener('fetch', event => {
             this._server = null;
         }
         this._authenticatedSockets.clear();
+    }
+
+    /**
+     * Debounce and coalesce file change broadcasts per file path.
+     */
+    private _queueFileChangeBroadcast(relativePath: string, payload: RemoteMessage): void {
+        this._pendingFileChanges.set(relativePath, payload);
+
+        const existingTimer = this._fileChangeDebounceTimers.get(relativePath);
+        if (existingTimer) {
+            clearTimeout(existingTimer);
+        }
+
+        const timer = setTimeout(() => {
+            const pending = this._pendingFileChanges.get(relativePath);
+            this._pendingFileChanges.delete(relativePath);
+            this._fileChangeDebounceTimers.delete(relativePath);
+            if (pending) {
+                this.broadcast(pending);
+            }
+        }, this._FILE_CHANGE_DEBOUNCE_MS);
+
+        this._fileChangeDebounceTimers.set(relativePath, timer);
     }
 
     /**

@@ -20,6 +20,8 @@ export interface PlanReviewToolResult {
     status: 'approved' | 'approvedWithComments' | 'recreateWithChanges' | 'cancelled';
     requiredRevisions: RequiredPlanRevision[];
     reviewId: string;
+    /** Explicit instruction for the model on what to do next */
+    nextStep: string;
 }
 
 /** Plan review panel options */

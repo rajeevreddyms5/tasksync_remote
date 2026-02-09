@@ -45,7 +45,7 @@ Before testing, ensure:
 - [x] Edit/Delete buttons: Hover over queue item → ✏️ and 🗑️ buttons appear
 - [x] Delete prompt: Click 🗑️ on an item → Item removed, count decreases
 - [x] Edit prompt: Click ✏️, change text, save → Item text updates
-- [x] Reorder: Drag item to new position → Order changes persist (FIXME: flickering occurs during drag, needs stabilization)
+- [x] Reorder: Drag item to new position → Order changes persist
 
 ---
 
@@ -167,7 +167,7 @@ Create a 3-step plan for setting up a Node.js project and present it using plan_
 
 ### 9.2 Connect from Device
 
-- [x] Access URL: Scan QR or type URL on phone → PIN entry page loads (FIXME: QR Code is not showing where we should show it, may be in the flowcammand icon that shows in the bottom bar of the IDE?)
+- [x] Access URL: Scan QR or type URL on phone → PIN entry page loads
 - [x] Authenticate: Enter 4-digit PIN → Remote UI loads with queue and input
 
 ### 9.3 Remote Features
@@ -202,7 +202,7 @@ Create a 3-step plan for setting up a Node.js project and present it using plan_
 ### 10.3 Instruction Injection
 
 - [x] Set injection: Set to "copilotInstructionsMd", approve → .github/copilot-instructions.md created/updated
-- [x] Verify content: Open .github/copilot-instructions.md → FlowCommand rules present in file (FIXME: When .github/copilot-instructions.md is changed manually and trying to inject, it asks permission to reinject (good), but settings should detect change and change button to 'reinject' or display 'default instructions changed')
+- [x] Verify content: Open .github/copilot-instructions.md → FlowCommand rules present in file
 
 ---
 
@@ -223,7 +223,7 @@ Create a 3-step plan for setting up a Node.js project and present it using plan_
 - [x] Set template: Click "Set as Template" on a prompt → Blue "Template" badge appears
 - [x] Template indicator: Look near input field → Template name shown
 - [x] Auto-append: Send a message → Template text automatically appended
-- [x] Remove template: Click ✕ on indicator → Template cleared (FIXME: Remove prompts section in settings, as we have the Reusable prompts icon on top - no need for duplicate)
+- [x] Remove template: Click ✕ on indicator → Template cleared
 
 ---
 
@@ -340,7 +340,7 @@ Ask: Database? - PostgreSQL - MongoDB - SQLite. Wait for response.
 
 ### 16.4 Emoji Numbers (1️⃣ 2️⃣)
 
-- [ ] Trigger: Use AI prompt below → Buttons labeled `1`, `2`, `3` appear (FIXME: Buttons not appearing for emoji numbers)
+- [x] Trigger: Use AI prompt below → Buttons labeled `1`, `2`, `3` appear
 
 **Copilot Test Prompt:**
 ```
@@ -355,6 +355,12 @@ Ask: Color scheme? 1️⃣ Dark 2️⃣ Light 3️⃣ System. Wait for choice.
 ```
 Ask: Language? 1. JS 2. TS 3. Python 4. Go 5. Rust 6. Java 7. C# 8. Ruby 9. PHP 10. Swift. Wait.
 ```
+
+---
+
+### 16.6 Multiple Answer Questions
+
+- [ ] FIXME: While multiple answer questions are given, the buttons are appearing as "1", "2", "3"
 
 ---
 
@@ -394,7 +400,7 @@ Create a simple 3-step plan and call plan_review for approval.
 
 - [ ] Permission: Open remote, click "Allow" on notification prompt → Permission granted (FIXME: Related to 17.3, notifications blocked on iOS Safari)
 - [ ] Trigger: Switch tabs, trigger ask_user → Browser notification appears with question text (FIXME: Related to 17.3)
-- [ ] Click: Click notification → Focuses FlowCommand tab (FIXME: Related to 17.3)
+- [ ] Click: Click notification → Focuses FlowCommand tab (FIXME: In desktop Chrome, notifications are blocked with "Notifications are blocked. Please enable them in your browser settings.")
 
 ### 18.3 Sound Toggle
 
