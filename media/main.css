@@ -2701,6 +2701,7 @@ button#send-btn:disabled {
     flex-direction: column;
     overflow: hidden;
     min-width: 200px;
+    min-height: 0; /* Required for flex child scrolling */
 }
 
 .plan-review-comments-header {
@@ -2745,6 +2746,7 @@ button#send-btn:disabled {
     flex: 1;
     overflow-y: auto;
     padding: 8px 12px;
+    min-height: 0; /* Required for flex child scrolling */
 }
 
 .plan-review-no-comments {
