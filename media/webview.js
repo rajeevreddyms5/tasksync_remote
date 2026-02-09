@@ -3430,6 +3430,10 @@
     function bindDragAndDrop() {
         if (!queueList) return;
         
+        // Global state for mouse drag (prevents flickering)
+        var mouseDragItem = null;
+        var mouseDragIndex = -1;
+        
         // Variables for touch drag
         var touchDragItem = null;
         var touchStartY = 0;
@@ -3438,20 +3442,63 @@
         var touchPlaceholder = null;
         
         queueList.querySelectorAll('.queue-item').forEach(function (item) {
-            // Mouse drag and drop (desktop)
+            // Track dragenter/dragleave count to handle child elements properly
+            var dragEnterCount = 0;
+            
+            // Mouse drag and drop (desktop) - fixed to prevent flickering
             item.addEventListener('dragstart', function (e) {
-                e.dataTransfer.setData('text/plain', String(parseInt(item.getAttribute('data-index'), 10)));
-                item.classList.add('dragging');
+                mouseDragItem = item;
+                mouseDragIndex = parseInt(item.getAttribute('data-index'), 10);
+                e.dataTransfer.setData('text/plain', String(mouseDragIndex));
+                e.dataTransfer.effectAllowed = 'move';
+                // Use setTimeout to allow the drag image to be captured first
+                setTimeout(function() {
+                    item.classList.add('dragging');
+                }, 0);
             });
-            item.addEventListener('dragend', function () { item.classList.remove('dragging'); });
-            item.addEventListener('dragover', function (e) { e.preventDefault(); item.classList.add('drag-over'); });
-            item.addEventListener('dragleave', function () { item.classList.remove('drag-over'); });
+            
+            item.addEventListener('dragend', function () {
+                item.classList.remove('dragging');
+                // Clean up all drag-over states
+                queueList.querySelectorAll('.queue-item').forEach(function(qi) {
+                    qi.classList.remove('drag-over');
+                });
+                mouseDragItem = null;
+                mouseDragIndex = -1;
+            });
+            
+            item.addEventListener('dragenter', function (e) {
+                e.preventDefault();
+                dragEnterCount++;
+                // Don't show drag-over on the item being dragged
+                if (mouseDragItem !== item && dragEnterCount === 1) {
+                    item.classList.add('drag-over');
+                }
+            });
+            
+            item.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                // Don't add class here - dragenter handles it (prevents flicker)
+            });
+            
+            item.addEventListener('dragleave', function (e) {
+                dragEnterCount--;
+                // Only remove when actually leaving the item (not entering a child)
+                if (dragEnterCount === 0) {
+                    item.classList.remove('drag-over');
+                }
+            });
+            
             item.addEventListener('drop', function (e) {
                 e.preventDefault();
+                dragEnterCount = 0;
                 var fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
                 var toIndex = parseInt(item.getAttribute('data-index'), 10);
                 item.classList.remove('drag-over');
-                if (fromIndex !== toIndex && !isNaN(fromIndex) && !isNaN(toIndex)) reorderQueue(fromIndex, toIndex);
+                if (fromIndex !== toIndex && !isNaN(fromIndex) && !isNaN(toIndex)) {
+                    reorderQueue(fromIndex, toIndex);
+                }
             });
             
             // Touch drag and drop (mobile/touch devices)
