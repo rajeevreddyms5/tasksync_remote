@@ -70,6 +70,9 @@ export class PlanReviewPanel {
 
         // Track this panel
         PlanReviewPanel.panels.set(options.interactionId, this);
+
+        // Explicitly reveal and focus the panel (ensures autofocus)
+        this._panel.reveal(vscode.ViewColumn.One, false);
     }
 
     /**

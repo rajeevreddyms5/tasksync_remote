@@ -447,6 +447,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
             // Also try webview audio if visible (better quality)
             this._view?.webview.postMessage({ type: 'playNotificationSound' } as ToWebviewMessage);
+
+            // Broadcast to remote clients (mobile/browser)
+            this._broadcastCallback?.({ type: 'playNotificationSound' } as ToWebviewMessage);
         }
     }
 
@@ -1985,7 +1988,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         const resolved = resolvePlanReview(reviewId, result);
         if (resolved) {
-            console.log('[TaskSync] Plan review resolved:', reviewId, action);
+            // Map 'closed' to 'cancelled' for the broadcast status (matches tool result)
+            const broadcastStatus = mappedAction === 'closed' ? 'cancelled' : mappedAction;
+            console.log('[TaskSync] Plan review resolved:', reviewId, broadcastStatus);
+            // Immediately broadcast to all clients to close their modals
+            // This ensures synchronization even if the main planReview() flow takes time
+            this.broadcastPlanReviewCompleted(reviewId, broadcastStatus);
         }
     }
 

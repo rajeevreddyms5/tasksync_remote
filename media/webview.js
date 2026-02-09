@@ -2286,7 +2286,7 @@
         // Render plan content with inline comment icons
         var bodyEl = document.getElementById('pr-body-' + reviewId);
         if (bodyEl) {
-            bodyEl.innerHTML = formatMessageContent(plan || '');
+            bodyEl.innerHTML = formatMarkdown(plan || '');
             // Wrap hoverable sections with comment icons
             var elements = bodyEl.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, blockquote, tr');
             elements.forEach(function (el) {
@@ -2394,6 +2394,18 @@
                 if (e.key === 'Enter') {
                     e.preventDefault();
                     if (commentInput) commentInput.focus();
+                }
+            });
+        }
+
+        // Enter in comment input adds the comment (Shift+Enter for new line)
+        if (commentInput) {
+            commentInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    // Trigger the add comment button click
+                    var addBtn = document.getElementById('pr-add-comment-' + reviewId);
+                    if (addBtn) addBtn.click();
                 }
             });
         }
@@ -2822,31 +2834,67 @@
 
     function playNotificationSound() {
         console.log('[TaskSync] playNotificationSound called, audioUnlocked:', audioUnlocked);
-        // Play the preloaded audio element
+        
+        // First try the preloaded audio element
         try {
             var audio = document.getElementById('notification-sound');
             console.log('[TaskSync] Audio element found:', !!audio);
-            if (audio) {
+            if (audio && audio.src && !audio.error) {
                 audio.currentTime = 0; // Reset to beginning
                 audio.volume = 0.5;
-                console.log('[TaskSync] Attempting to play audio...');
+                console.log('[TaskSync] Attempting to play audio file...');
                 var playPromise = audio.play();
                 if (playPromise !== undefined) {
                     playPromise.then(function () {
                         console.log('[TaskSync] Audio playback started successfully');
                     }).catch(function (e) {
-                        console.log('[TaskSync] Could not play audio:', e.message);
-                        console.log('[TaskSync] Error name:', e.name);
-                        // If autoplay blocked, show visual feedback
-                        flashNotification();
+                        console.log('[TaskSync] Could not play audio file:', e.message);
+                        // If autoplay blocked or file missing, try Web Audio API beep
+                        playWebAudioBeep();
                     });
+                    return;
                 }
-            } else {
-                console.log('[TaskSync] No audio element found, showing visual notification');
-                flashNotification();
             }
         } catch (e) {
-            console.log('[TaskSync] Could not play notification sound:', e);
+            console.log('[TaskSync] Audio element error:', e);
+        }
+        
+        // Fallback to Web Audio API beep
+        playWebAudioBeep();
+    }
+    
+    function playWebAudioBeep() {
+        console.log('[TaskSync] Playing Web Audio API beep');
+        try {
+            var AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) {
+                console.log('[TaskSync] Web Audio API not supported');
+                flashNotification();
+                return;
+            }
+            
+            var audioCtx = new AudioContext();
+            var oscillator = audioCtx.createOscillator();
+            var gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            // Create a pleasant notification beep (A5 note = 880Hz)
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime);
+            
+            // Fade in and out for smooth sound
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.01);
+            gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.2);
+            
+            oscillator.start(audioCtx.currentTime);
+            oscillator.stop(audioCtx.currentTime + 0.2);
+            
+            console.log('[TaskSync] Web Audio beep played');
+        } catch (e) {
+            console.log('[TaskSync] Web Audio API beep failed:', e);
             flashNotification();
         }
     }

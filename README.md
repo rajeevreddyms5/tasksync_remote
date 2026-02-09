@@ -160,9 +160,10 @@ Create `.github/copilot-instructions.md` in your workspace and add:
 ### 2. PLANNING WORKFLOW (Special Case)
 - **Trigger**: When you (the agent) decide to present a plan, guide, strategy, or roadmap to the user.
 - **Usage**: Call `plan_review` tool.
-- **Loop**: 
+- **Loop**:
   - If user requests changes → Update plan and call `plan_review` again.
   - If user approves → Apply any feedback given, then proceed with execution.
+  - If user cancels → Stop execution immediately, call `ask_user`.
 - **After completion**: Return to Rule 1 (call `ask_user`).
 
 ### 3. STOP CONDITIONS (Only Exception)

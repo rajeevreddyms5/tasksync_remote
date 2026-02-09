@@ -2570,8 +2570,9 @@ self.addEventListener('fetch', event => {
             if (saved) vscodeState = JSON.parse(saved);
         } catch (e) {}
         
-        // Mobile notification support
-        window.mobileNotificationEnabled = false;
+        // Mobile notification support - default to TRUE for remote clients
+        // Remote users explicitly want notifications since they're using the web interface
+        window.mobileNotificationEnabled = true;
         
         function requestNotificationPermission() {
             if ('Notification' in window && Notification.permission === 'default') {
@@ -2581,18 +2582,32 @@ self.addEventListener('fetch', event => {
             }
         }
         
+        // Request notification permission on page load for remote clients
+        requestNotificationPermission();
+        
         function showMobileNotification(prompt) {
-            if (!('Notification' in window)) return;
-            if (Notification.permission !== 'granted') return;
-            if (document.hasFocus()) return; // Don't notify if tab is focused
+            if (!('Notification' in window)) {
+                console.log('[TaskSync] Browser does not support notifications');
+                return;
+            }
+            if (Notification.permission !== 'granted') {
+                console.log('[TaskSync] Notification permission not granted:', Notification.permission);
+                // Request permission if not yet asked
+                if (Notification.permission === 'default') {
+                    requestNotificationPermission();
+                }
+                return;
+            }
             
             var preview = prompt.length > 100 ? prompt.substring(0, 97) + '...' : prompt;
             try {
+                console.log('[TaskSync] Showing browser notification:', preview.substring(0, 50));
                 var notification = new Notification('TaskSync', {
                     body: preview,
-                    icon: '/favicon.ico',
+                    icon: '/media/TS-logo.svg',
                     tag: 'tasksync-pending', // Replace previous notification
-                    requireInteraction: true
+                    requireInteraction: true,
+                    silent: false
                 });
                 notification.onclick = function() {
                     window.focus();
@@ -2800,7 +2815,7 @@ self.addEventListener('fetch', event => {
                 if ((message.type === 'toolCallPending' || message.type === 'planReviewPending') && window.mobileNotificationEnabled) {
                     const notificationText = message.type === 'planReviewPending' 
                         ? 'Plan Review: ' + (message.title || 'Review required')
-                        : message.prompt;
+                        : 'AI needs your input: ' + (message.prompt || 'Question pending');
                     showMobileNotification(notificationText);
                 }
                 // Sync mobile notification flag when settings change
