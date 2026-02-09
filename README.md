@@ -158,7 +158,7 @@ Create `.github/copilot-instructions.md` in your workspace and add:
   - `context`: Your FULL response, explanation, or code output.
 
 ### 2. PLANNING WORKFLOW (Special Case)
-- **Trigger**: When you (the agent) decide to present a plan, guide, strategy, or roadmap to the user.
+- **Trigger**: When presenting structured content with multiple items such as: plans, guides, reviews, analyses, recommendations, or lists of findings/suggestions.
 - **Usage**: Call `plan_review` tool.
 - **Loop**:
   - If user requests changes → Update plan and call `plan_review` again.

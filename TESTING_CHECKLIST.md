@@ -308,6 +308,207 @@ Before testing:
 
 ---
 
+## Part 15: Queue Pause/Play Feature
+
+### 15.1 Pause Button Visibility
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Look at the queue header | You see a pause button (⏸️) next to queue count |
+| 2 | Hover over the button | Tooltip shows "Pause queue processing" |
+
+### 15.2 Pause Queue Processing
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Add 3 prompts to queue: "Response 1", "Response 2", "Response 3" | Queue shows 3 items |
+| 2 | Click the pause button | • Button icon changes to play (▶️)<br>• Header shows "(Paused)" label<br>• Header gets yellow border<br>• Queue list is dimmed |
+| 3 | In Copilot, type: "Ask me any question" | • Copilot calls ask_user<br>• TaskSync shows question but does NOT auto-respond from queue<br>• Queue still has 3 items |
+| 4 | Manually type response: "Manual response" | Response sent to Copilot |
+
+**AI Test Prompt for Copilot:**
+```
+Ask me a simple question using the ask_user tool. Do not proceed until I respond.
+```
+
+### 15.3 Resume Queue Processing
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Click the play button | • Button icon changes to pause (⏸️)<br>• "(Paused)" label disappears<br>• Queue list no longer dimmed |
+| 2 | In Copilot, type: "Ask me another question" | • Copilot calls ask_user<br>• TaskSync auto-responds with "Response 1"<br>• Queue now has 2 items |
+
+### 15.4 Remote Client Sync
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Connect from phone/browser | Remote UI shows queue |
+| 2 | Pause queue from VS Code | Remote UI shows paused state |
+| 3 | Resume queue from Remote UI | VS Code shows resumed state |
+
+---
+
+## Part 16: Interactive Approval Parsing
+
+### 16.1 Numbered Options (1. 2. 3.)
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | In Copilot, trigger this question: | Choice buttons 1, 2, 3 appear |
+
+**AI Test Prompt:**
+```
+Present me with these exact options:
+
+Which framework do you prefer?
+1. React
+2. Vue
+3. Angular
+
+Wait for my selection.
+```
+
+### 16.2 Lettered Options (A. B. C.)
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | In Copilot, trigger this question: | Choice buttons A, B, C appear |
+
+**AI Test Prompt:**
+```
+Ask me to choose with lettered options:
+
+What's your preferred testing approach?
+A. Unit tests only
+B. Integration tests only
+C. Both unit and integration tests
+
+Wait for my answer.
+```
+
+### 16.3 Bullet Point Options (NEW)
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | In Copilot, trigger this question: | Choice buttons 1, 2, 3 appear |
+
+**AI Test Prompt:**
+```
+Present options using bullet points:
+
+Which database do you want to use?
+- PostgreSQL
+- MongoDB
+- SQLite
+
+Wait for my response.
+```
+
+### 16.4 Emoji Numbered Options (NEW)
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | In Copilot, trigger this question: | Choice buttons 1, 2, 3 appear |
+
+**AI Test Prompt:**
+```
+Present these options with emoji numbers:
+
+Select a color scheme:
+1️⃣ Dark mode
+2️⃣ Light mode
+3️⃣ System default
+
+Wait for my choice.
+```
+
+### 16.5 Approval/Yes-No Questions
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | In Copilot, trigger this question: | Yes/No buttons appear |
+
+**AI Test Prompt:**
+```
+Ask me a simple yes/no confirmation question: "Should I proceed with the refactoring?"
+```
+
+### 16.6 Long Lists Don't Show Buttons
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | In Copilot, trigger this question: | No choice buttons (too many options), just text input |
+
+**AI Test Prompt:**
+```
+Present me with many options:
+
+Which programming language?
+1. JavaScript
+2. TypeScript
+3. Python
+4. Go
+5. Rust
+6. Java
+7. C#
+8. Ruby
+9. PHP
+10. Swift
+
+Wait for my choice.
+```
+
+---
+
+## Part 17: Remote Plan Review
+
+### 17.1 Remote Plan Review Display
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Connect to remote server | Remote UI loads |
+| 2 | In Copilot: "Create a plan and present it for review" | • VS Code: Plan Review panel opens<br>• Remote: Plan Review modal appears |
+| 3 | Check remote modal content | • Plan text is visible and markdown formatted<br>• Buttons work (Approve, Request Changes, Close) |
+
+**AI Test Prompt:**
+```
+Create a simple 3-step plan for setting up a new project and call the plan_review tool to present it for my approval.
+```
+
+### 17.2 Plan Review Dismiss Sync
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Open plan review from Copilot | Both VS Code panel and remote modal open |
+| 2 | Close the plan from VS Code (X button) | Remote modal automatically closes |
+| 3 | Trigger another plan review | Both open again |
+| 4 | Close from remote (Close button) | VS Code panel automatically closes |
+
+### 17.3 Notification on Plan Review (Remote)
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Enable browser notifications on remote | Permission granted |
+| 2 | Switch to another browser tab | TaskSync tab is not visible |
+| 3 | Trigger a plan review | • Browser notification appears<br>• Sound plays (beep) |
+
+---
+
+## Part 18: Notification Improvements
+
+### 18.1 Sound Notification (Web Audio Fallback)
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Enable sound in settings | Sound toggle ON |
+| 2 | Interact with TaskSync (click somewhere) | Audio context unlocked |
+| 3 | In Copilot: "Ask me any question" | Beep sound plays (880Hz tone) |
+| 4 | Verify on remote client | Same beep sound plays |
+
+### 18.2 Browser Push Notifications (Remote)
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Open remote UI in browser | Browser asks for notification permission |
+| 2 | Click "Allow" | Permission granted |
+| 3 | Switch to different browser tab | TaskSync tab is hidden |
+| 4 | In Copilot: "Ask me a question" | • Browser notification appears<br>• Shows question text<br>• Click notification → focuses TaskSync tab |
+
+### 18.3 Notification Sound Toggle
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | In Settings, turn OFF notification sound | Toggle disabled |
+| 2 | Trigger ask_user | No sound plays |
+| 3 | Turn sound back ON | Toggle enabled |
+| 4 | Trigger ask_user | Sound plays |
+
+---
+
 ## Test Completion Checklist
 
 After completing all tests, verify:
@@ -320,6 +521,11 @@ After completing all tests, verify:
 - [ ] All settings toggles work
 - [ ] Reusable prompts work
 - [ ] Error states handled gracefully
+- [ ] **Queue pause/play works** (pauses auto-respond, resumes correctly)
+- [ ] **Interactive approval buttons detect** bullet points, emoji numbers
+- [ ] **Plan review dismiss syncs** between IDE and remote
+- [ ] **Notifications work** (sound beep, browser push on remote)
+- [ ] **Enter key saves comments** in plan review
 
 ---
 

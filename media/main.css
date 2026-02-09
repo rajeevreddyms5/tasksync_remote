@@ -871,6 +871,55 @@ body {
     font-weight: 500;
 }
 
+.queue-pause-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    margin-left: 4px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--vscode-foreground);
+    opacity: 0.7;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.queue-pause-btn:hover {
+    opacity: 1;
+    background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.queue-pause-btn:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
+/* Paused state */
+.queue-section.paused .queue-header {
+    background-color: var(--vscode-inputValidation-warningBackground, rgba(255, 200, 0, 0.1));
+    border-color: var(--vscode-inputValidation-warningBorder, #ddb100);
+}
+
+.queue-section.paused .queue-header-title::after {
+    content: ' (Paused)';
+    color: var(--vscode-inputValidation-warningBorder, #ddb100);
+    font-size: 11px;
+    font-weight: normal;
+}
+
+.queue-section.paused .queue-list {
+    opacity: 0.6;
+}
+
+.queue-section.paused .queue-pause-btn {
+    color: var(--vscode-inputValidation-warningBorder, #ddb100);
+    opacity: 1;
+}
+
 .queue-list {
     max-height: var(--queue-list-max-height);
     overflow-y: auto;

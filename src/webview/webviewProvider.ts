@@ -69,7 +69,7 @@ export interface ReusablePrompt {
 
 // Message types
 type ToWebviewMessage =
-    | { type: 'updateQueue'; queue: QueuedPrompt[]; enabled: boolean }
+    | { type: 'updateQueue'; queue: QueuedPrompt[]; enabled: boolean; paused: boolean }
     | { type: 'toolCallPending'; id: string; prompt: string; context?: string; isApprovalQuestion: boolean; choices?: ParsedChoice[] }
     | { type: 'toolCallCompleted'; entry: ToolCallEntry }
     | { type: 'updateCurrentSession'; history: ToolCallEntry[] }
@@ -123,6 +123,8 @@ type FromWebviewMessage =
     | { type: 'updateInstructionInjection'; method: string }
     | { type: 'updateInstructionText'; text: string }
     | { type: 'resetInstructionText' }
+    | { type: 'pauseQueue' }
+    | { type: 'resumeQueue' }
     | { type: 'planReviewResponse'; reviewId: string; action: string; revisions: Array<{ revisedPart: string; revisorInstructions: string }> };
 
 
@@ -135,6 +137,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     // Prompt queue state
     private _promptQueue: QueuedPrompt[] = [];
     private _queueEnabled: boolean = true; // Default to queue mode
+    private _queuePaused: boolean = false; // Pause queue processing
 
     // Attachments state
     private _attachments: AttachmentInfo[] = [];
@@ -879,8 +882,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const toolCallId = `tc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         this._currentToolCallId = toolCallId;
 
-        // Check if queue is enabled and has prompts - auto-respond
-        if (this._queueEnabled && this._promptQueue.length > 0) {
+        // Check if queue is enabled, not paused, and has prompts - auto-respond
+        if (this._queueEnabled && !this._queuePaused && this._promptQueue.length > 0) {
             const queuedPrompt = this._promptQueue.shift();
             if (queuedPrompt) {
                 this._saveQueueToDisk();
@@ -1021,6 +1024,12 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 break;
             case 'clearQueue':
                 this._handleClearQueue();
+                break;
+            case 'pauseQueue':
+                this._handlePauseQueue();
+                break;
+            case 'resumeQueue':
+                this._handleResumeQueue();
                 break;
             case 'addAttachment':
                 this._handleAddAttachment();
@@ -1770,6 +1779,22 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
+     * Handle pausing the queue
+     */
+    private _handlePauseQueue(): void {
+        this._queuePaused = true;
+        this._updateQueueUI();
+    }
+
+    /**
+     * Handle resuming the queue
+     */
+    private _handleResumeQueue(): void {
+        this._queuePaused = false;
+        this._updateQueueUI();
+    }
+
+    /**
      * Handle removing a history item from persisted history (modal only)
      */
     private _handleRemoveHistoryItem(callId: string): void {
@@ -2179,7 +2204,8 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         this._postMessage({
             type: 'updateQueue',
             queue: this._promptQueue,
-            enabled: this._queueEnabled
+            enabled: this._queueEnabled,
+            paused: this._queuePaused
         } as ToWebviewMessage);
     }
 
@@ -2457,6 +2483,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     </div>
                     <span class="queue-header-title">Prompt Queue</span>
                     <span class="queue-count" id="queue-count" aria-live="polite">0</span>
+                    <button class="queue-pause-btn" id="queue-pause-btn" title="Pause/Resume queue processing" aria-label="Pause queue">
+                        <span class="codicon codicon-debug-pause" aria-hidden="true"></span>
+                    </button>
                 </div>
                 <div class="queue-list" id="queue-list" role="list" aria-label="Queued prompts">
                     <div class="queue-empty" role="status">No prompts in queue</div>
@@ -2628,6 +2657,46 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             return choices;
         }
 
+        // Pattern 1c: Emoji numbered options (1️⃣, 2️⃣, etc.)
+        // Emoji keycaps: digit + variation selector (FE0F) + combining enclosing keycap (20E3)
+        const emojiNumberPattern = /^\s*([0-9])\uFE0F?\u20E3\s+(.+)$/;
+        const emojiLines: { index: number; num: string; text: string }[] = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const m = lines[i].match(emojiNumberPattern);
+            if (m && m[2].trim().length >= 3) {
+                const cleanText = m[2].replace(/\*\*/g, '').trim();
+                emojiLines.push({ index: i, num: m[1], text: cleanText });
+            }
+        }
+
+        if (emojiLines.length >= 2) {
+            // Find contiguous emoji list (first group)
+            const listBoundaries: number[] = [0];
+            for (let i = 1; i < emojiLines.length; i++) {
+                const gap = emojiLines[i].index - emojiLines[i - 1].index;
+                if (gap > 3) {
+                    listBoundaries.push(i);
+                }
+            }
+
+            const firstListEnd = listBoundaries.length > 1 ? listBoundaries[1] : emojiLines.length;
+            const firstGroup = emojiLines.slice(0, firstListEnd);
+
+            if (firstGroup.length >= 2) {
+                for (const m of firstGroup) {
+                    let cleanText = m.text.replace(/[?!]+$/, '').trim();
+                    const displayText = cleanText.length > 40 ? cleanText.substring(0, 37) + '...' : cleanText;
+                    choices.push({
+                        label: displayText,
+                        value: m.num,
+                        shortLabel: m.num
+                    });
+                }
+                return choices;
+            }
+        }
+
         // Pattern 2: Lettered options - lines starting with "A." or "A)" or "**A)" through Z
         // Also match bold lettered options like "**A) Option**"
         // FIX: Search entire text, not just after question mark
@@ -2699,9 +2768,53 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             return choices;
         }
 
-        // Pattern 3: "Option A:" or "Option 1:" style
+        // Pattern 2c: Bullet-point options - lines starting with "- ", "* ", or "• "
+        // Common in markdown and rich text copy-paste
+        const bulletLinePattern = /^\s*[-*•]\s+(.+)$/;
+        const bulletLines: { index: number; text: string }[] = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const m = lines[i].match(bulletLinePattern);
+            if (m && m[1].trim().length >= 3) {
+                // Skip lines that look like list item descriptions rather than choices
+                // (e.g., nested explanatory bullets in a larger context)
+                const cleanText = m[1].replace(/\*\*/g, '').trim();
+                bulletLines.push({ index: i, text: cleanText });
+            }
+        }
+
+        if (bulletLines.length >= 2) {
+            // Find contiguous bullet list (first group)
+            const listBoundaries: number[] = [0];
+            for (let i = 1; i < bulletLines.length; i++) {
+                const gap = bulletLines[i].index - bulletLines[i - 1].index;
+                if (gap > 3) {
+                    listBoundaries.push(i);
+                }
+            }
+
+            const firstListEnd = listBoundaries.length > 1 ? listBoundaries[1] : bulletLines.length;
+            const firstGroup = bulletLines.slice(0, firstListEnd);
+
+            if (firstGroup.length >= 2) {
+                for (let idx = 0; idx < firstGroup.length; idx++) {
+                    const m = firstGroup[idx];
+                    let cleanText = m.text.replace(/[?!]+$/, '').trim();
+                    const displayText = cleanText.length > 40 ? cleanText.substring(0, 37) + '...' : cleanText;
+                    const num = (idx + 1).toString();
+                    choices.push({
+                        label: displayText,
+                        value: num,
+                        shortLabel: num
+                    });
+                }
+                return choices;
+            }
+        }
+
+        // Pattern 3: "Option A:" or "Option 1:" style (supports multi-digit numbers like Option 10)
         // Search entire text for this pattern
-        const optionPattern = /option\s+([A-Za-z1-9])\s*:\s*([^O\n]+?)(?=\s*Option\s+[A-Za-z1-9]|\s*$|\n)/gi;
+        const optionPattern = /option\s+([A-Za-z]|\d+)\s*:\s*([^O\n]+?)(?=\s*Option\s+(?:[A-Za-z]|\d+)|\s*$|\n)/gi;
         const optionMatches: { id: string; text: string }[] = [];
 
         while ((match = optionPattern.exec(text)) !== null) {
@@ -2772,6 +2885,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             // Lettered options (A. B. C. or a) b) c) or Option A/B/C)
             /\n\s*[a-d][.)]\s+\S/i,
             /option\s+[a-d]\s*:/i,
+            // Bullet-point options (- item, * item, • item)
+            /\n\s*[-*•]\s+\S/i,
+            // Emoji numbered options (1️⃣, 2️⃣, etc.)
+            /\n\s*[0-9]\uFE0F?\u20E3\s+\S/i,
             // "Would you like me to:" followed by list
             /would you like (?:me to|to):\s*\n/i,
             // ASCII art boxes/mockups (common patterns)
@@ -2798,11 +2915,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         const approvalPatterns = [
             // Direct yes/no question patterns
             /^(?:shall|should|can|could|may|would|will|do|does|did|is|are|was|were|have|has|had)\s+(?:i|we|you|it|this|that)\b/i,
-            // Permission/confirmation phrases
-            /(?:proceed|continue|go ahead|start|begin|execute|run|apply|commit|save|delete|remove|create|add|update|modify|change|overwrite|replace)/i,
-            /(?:ok|okay|alright|ready|confirm|approve|accept|allow|enable|disable|skip|ignore|dismiss|close|cancel|abort|stop|exit|quit)/i,
-            // Question endings that suggest yes/no
-            /\?$/,
+            // Permission/confirmation phrases (require ? at end to avoid matching plain text)
+            /(?:proceed|continue|go ahead|start|begin|execute|run|apply|commit|save|delete|remove|create|add|update|modify|change|overwrite|replace).*\?$/i,
+            /(?:ok|okay|alright|ready|confirm|approve|accept|allow|enable|disable|skip|ignore|dismiss|close|cancel|abort|stop|exit|quit).*\?$/i,
+            // Question endings that suggest yes/no (more specific than generic \?$)
             /(?:right|correct|yes|no)\s*\?$/i,
             /(?:is that|does that|would that|should that)\s+(?:ok|okay|work|help|be\s+(?:ok|fine|good|acceptable))/i,
             // Explicit approval requests

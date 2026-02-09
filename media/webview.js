@@ -11,6 +11,7 @@
     // State
     let promptQueue = [];
     let queueEnabled = true; // Default to true (Queue mode ON by default)
+    let queuePaused = false; // Queue pause state
     let dropdownOpen = false;
     let currentAttachments = previousState.attachments || []; // Restore attachments
     let selectedCard = 'queue';
@@ -57,7 +58,7 @@
     // DOM Elements
     let chatInput, sendBtn, attachBtn, modeBtn, modeDropdown, modeLabel;
     let inputHighlighter; // Overlay for syntax highlighting in input
-    let queueSection, queueHeader, queueList, queueCount;
+    let queueSection, queueHeader, queueList, queueCount, queuePauseBtn;
     let chatContainer, chipsContainer, autocompleteDropdown, autocompleteList, autocompleteEmpty;
     let inputContainer, inputAreaContainer, welcomeSection;
     let cardVibe, cardSpec, toolHistoryArea, pendingMessage;
@@ -138,6 +139,7 @@
         queueHeader = document.getElementById('queue-header');
         queueList = document.getElementById('queue-list');
         queueCount = document.getElementById('queue-count');
+        queuePauseBtn = document.getElementById('queue-pause-btn');
         chatContainer = document.getElementById('chat-container');
         chipsContainer = document.getElementById('chips-container');
         autocompleteDropdown = document.getElementById('autocomplete-dropdown');
@@ -649,6 +651,7 @@
         });
 
         if (queueHeader) queueHeader.addEventListener('click', handleQueueHeaderClick);
+        if (queuePauseBtn) queuePauseBtn.addEventListener('click', handleQueuePauseClick);
         if (historyModalClose) historyModalClose.addEventListener('click', closeHistoryModal);
         if (historyModalClearAll) historyModalClearAll.addEventListener('click', clearAllPersistedHistory);
         if (historyModalOverlay) {
@@ -1079,8 +1082,42 @@
         }
     }
 
-    function handleQueueHeaderClick() {
+    function handleQueueHeaderClick(e) {
+        // Don't toggle collapse if clicking on the pause button
+        if (e.target.closest('.queue-pause-btn')) return;
         if (queueSection) queueSection.classList.toggle('collapsed');
+    }
+
+    function handleQueuePauseClick(e) {
+        e.stopPropagation(); // Prevent header click from triggering
+        if (queuePaused) {
+            vscode.postMessage({ type: 'resumeQueue' });
+        } else {
+            vscode.postMessage({ type: 'pauseQueue' });
+        }
+    }
+
+    function updateQueuePauseUI() {
+        if (!queuePauseBtn) return;
+        
+        var icon = queuePauseBtn.querySelector('.codicon');
+        if (queuePaused) {
+            if (icon) {
+                icon.classList.remove('codicon-debug-pause');
+                icon.classList.add('codicon-debug-start');
+            }
+            queuePauseBtn.title = 'Resume queue processing';
+            queuePauseBtn.setAttribute('aria-label', 'Resume queue');
+            queueSection.classList.add('paused');
+        } else {
+            if (icon) {
+                icon.classList.remove('codicon-debug-start');
+                icon.classList.add('codicon-debug-pause');
+            }
+            queuePauseBtn.title = 'Pause queue processing';
+            queuePauseBtn.setAttribute('aria-label', 'Pause queue');
+            queueSection.classList.remove('paused');
+        }
     }
 
     function handleExtensionMessage(event) {
@@ -1090,9 +1127,11 @@
             case 'updateQueue':
                 promptQueue = message.queue || [];
                 queueEnabled = message.enabled !== false;
+                queuePaused = message.paused === true;
                 renderQueue();
                 updateModeUI();
                 updateQueueVisibility();
+                updateQueuePauseUI();
                 updateCardSelection();
                 // Hide welcome section if we have current session calls
                 updateWelcomeSectionVisibility();

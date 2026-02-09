@@ -2346,6 +2346,9 @@ self.addEventListener('fetch', event => {
                         </div>
                         <span class="queue-header-title">Prompt Queue</span>
                         <span class="queue-count" id="queue-count" aria-live="polite">0</span>
+                        <button class="queue-pause-btn" id="queue-pause-btn" title="Pause/Resume queue processing" aria-label="Pause queue">
+                            <span class="codicon codicon-debug-pause" aria-hidden="true"></span>
+                        </button>
                     </div>
                     <div class="queue-list" id="queue-list" role="list" aria-label="Queued prompts">
                         <div class="queue-empty" role="status">No prompts in queue</div>
