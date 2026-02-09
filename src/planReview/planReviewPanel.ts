@@ -485,6 +485,21 @@ export class PlanReviewPanel {
             border-radius: 8px;
         }
 
+        .clear-all-btn {
+            margin-left: auto;
+            font-size: 11px;
+            background: none;
+            border: none;
+            color: var(--accent);
+            cursor: pointer;
+            padding: 2px 8px;
+            border-radius: 3px;
+        }
+
+        .clear-all-btn:hover {
+            background: var(--hover-bg);
+        }
+
         .comments-list-container {
             flex: 1;
             overflow-y: auto;
@@ -699,6 +714,7 @@ export class PlanReviewPanel {
             <div class="comments-header">
                 <span>Comments</span>
                 <span class="comments-count" id="comments-count">0</span>
+                <button class="clear-all-btn" id="clear-all-btn" title="Clear all comments" style="display: none;">Clear All</button>
             </div>
             <div class="comments-list-container" id="comments-list">
                 <div class="no-comments" id="no-comments">No comments yet. Hover over a section and click the comment icon to add feedback.</div>
@@ -745,6 +761,7 @@ export class PlanReviewPanel {
         const planContent = document.getElementById('plan-content');
         const commentsList = document.getElementById('comments-list');
         const commentsCount = document.getElementById('comments-count');
+        const clearAllBtn = document.getElementById('clear-all-btn');
         const noComments = document.getElementById('no-comments');
         const commentDialog = document.getElementById('comment-dialog');
         const commentDialogOverlay = document.getElementById('comment-dialog-overlay');
@@ -924,8 +941,18 @@ export class PlanReviewPanel {
             updateRejectButtonState();
         }
 
+        function clearAllComments() {
+            comments = [];
+            renderComments();
+            updateLineHighlights();
+            updateRejectButtonState();
+        }
+
         function renderComments() {
             commentsCount.textContent = comments.length;
+            // Show/hide Clear All button based on comment count
+            clearAllBtn.style.display = comments.length > 0 ? 'block' : 'none';
+            
             if (comments.length === 0) {
                 noComments.style.display = 'block';
                 commentsList.innerHTML = '';
@@ -992,11 +1019,15 @@ export class PlanReviewPanel {
         dialogCancel.addEventListener('click', closeCommentDialog);
         commentDialogOverlay.addEventListener('click', closeCommentDialog);
         dialogSave.addEventListener('click', saveComment);
+        clearAllBtn.addEventListener('click', clearAllComments);
 
         commentInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            // Enter (without Shift) saves the comment
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
                 saveComment();
             }
+            // Shift+Enter allows new line (default behavior)
             if (e.key === 'Escape') {
                 closeCommentDialog();
             }
