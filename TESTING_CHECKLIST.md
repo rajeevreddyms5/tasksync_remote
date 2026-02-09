@@ -383,7 +383,7 @@ Wait for my answer.
 ### 16.3 Bullet Point Options (NEW)
 | Step | Action | Expected Result |
 |------|--------|-----------------|
-| 1 | In Copilot, trigger this question: | Choice buttons 1, 2, 3 appear |
+| 1 | In Copilot, trigger this question: | Choice buttons show option text (PostgreSQL, MongoDB, SQLite) |
 
 **AI Test Prompt:**
 ```
@@ -555,6 +555,133 @@ After completing all tests, verify:
 | 4 | Type another comment | Text appears |
 | 5 | Press Shift+Enter | New line added in textarea |
 | 6 | Click "Add Comment" button | Comment is added (existing functionality) |
+
+---
+
+## Part 13: Session Changes Testing (Latest Updates)
+
+This section covers changes made in the current development session.
+
+### 13.1 Choice Button Labels (Bug Fix)
+
+#### Numbered/Lettered Choices
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Trigger Copilot to show numbered choices (1. Option, 2. Option) | Choice buttons display identifiers: `1`, `2`, `3` |
+| 2 | Verify in VS Code TaskSync panel | Same behavior |
+| 3 | Verify in Remote Server (browser) | Same behavior |
+
+#### Bullet Point Choices
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Trigger Copilot to show bullet choices (- Option A) | Choice buttons display full text: `Option A` |
+| 2 | Verify in VS Code TaskSync panel | Same behavior |
+| 3 | Verify in Remote Server (browser) | Same behavior |
+
+### 13.2 Prompt Template Feature
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Open Prompts modal (click prompts icon in header) | Modal opens with list of prompts |
+| 2 | Click "Set as Template" on a reusable prompt | Blue "Template" badge appears on that prompt |
+| 3 | Look near the input field | Template indicator shows with prompt name |
+| 4 | Send a message | Template text is automatically appended |
+| 5 | Click ✕ on the template indicator | Template is removed, indicator disappears |
+
+### 13.3 Touch Drag-and-Drop for Queue
+
+**Test on touch device or browser dev tools with touch simulation:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Add 3+ prompts to queue | Queue shows 3+ items |
+| 2 | Touch and hold a queue item | Visual feedback appears |
+| 3 | Drag to new position | Item moves with finger |
+| 4 | Release | Item stays in new position |
+| 5 | Verify visual feedback | Blue border, slight scale animation during drag |
+
+### 13.4 File Reference (#) in Remote Server
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Open Remote Server in browser | UI loads |
+| 2 | Type `#` in the input field | Autocomplete dropdown appears |
+| 3 | Type partial filename | Search results appear |
+| 4 | Select a file | Chip appears in input area |
+
+### 13.5 Remote Header Buttons
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Look at remote server header | Prompts button (keyword icon) visible |
+| 2 | Click Prompts button | Prompts modal opens |
+| 3 | Look for Settings button (gear icon) | Settings button visible |
+| 4 | Click Settings button | Settings modal opens |
+
+### 13.6 Attachment Button Hidden in Remote
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Look at remote input area | NO `+` button visible |
+| 2 | Only visible: mode selector, end button, send button | Correct |
+
+### 13.7 Image Paste/Drag
+
+**VS Code:**
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Take screenshot (Win+Shift+S) | Screenshot copied to clipboard |
+| 2 | Paste in TaskSync input (Ctrl+V) | Image chip appears |
+
+**Remote Server:**
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Take screenshot | Screenshot ready |
+| 2 | Paste in remote input | Image chip appears |
+| 3 | Check browser console | Logs show `processImageFile called` |
+
+### 13.8 Mobile Notification System
+
+#### Notification Permission Button
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Open remote server on mobile/browser | Bell icon visible in header |
+| 2 | If permission not requested | Bell shows with dot (🔔•) |
+| 3 | Tap bell button | Permission prompt appears (iOS 16.4+) |
+| 4 | Grant permission | Bell changes to solid (🔔) |
+
+#### Native vs Visual Toast
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | With notifications enabled, trigger ask_user | Native push notification appears |
+| 2 | No visual toast appears | Correct (native takes priority) |
+| 3 | With notifications disabled, trigger ask_user | Blue visual toast at top of screen |
+| 4 | Toast auto-hides | After 5 seconds |
+
+### 13.9 Debug Logging (Browser Console)
+
+**For Image Drag/Paste:**
+```
+[TaskSync] Setting up drag-drop, dropTarget found: true
+[TaskSync] Drop event triggered
+[TaskSync] Files count: 1
+[TaskSync] processImageFile called for: image.png
+[TaskSync] FileReader loaded, sending saveImage message
+```
+
+**For Notifications:**
+```
+[TaskSync] showMobileNotification called with: ...
+[TaskSync] Showing native browser notification (if granted)
+OR
+[TaskSync] Using visual toast notification
+```
+
+### Known Limitations (Session Updates)
+
+1. **VS Code Webview Drag-Drop:** Cannot drag files from Windows Explorer into VS Code webview (browser security). Use paste instead.
+2. **iOS Notifications:** Requires iOS 16.4+, PWA from Add to Home Screen, explicit permission via bell button.
+3. **Remote Attachment Button:** Hidden (requires VS Code file picker API).
 
 ---
 

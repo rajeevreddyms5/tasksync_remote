@@ -58,7 +58,7 @@
     // DOM Elements
     let chatInput, sendBtn, attachBtn, modeBtn, modeDropdown, modeLabel;
     let inputHighlighter; // Overlay for syntax highlighting in input
-    let queueSection, queueHeader, queueList, queueCount, queuePauseBtn;
+    let queueSection, queueHeader, queueList, queueCount, queuePauseBtn, queueClearBtn;
     let chatContainer, chipsContainer, autocompleteDropdown, autocompleteList, autocompleteEmpty;
     let inputContainer, inputAreaContainer, welcomeSection;
     let cardVibe, cardSpec, toolHistoryArea, pendingMessage;
@@ -66,7 +66,9 @@
     // Edit mode elements
     let actionsLeft, actionsBar, editActionsContainer, editCancelBtn, editConfirmBtn;
     // Approval modal elements
-    let approvalModal, approvalContinueBtn, approvalNoBtn;
+    let approvalModal, approvalContinueBtn, approvalNoBtn, approvalEndBtn;
+    // End session button (always visible in actions bar)
+    let endSessionBtn;
     // Slash command elements
     let slashDropdown, slashList, slashEmpty;
     // Settings modal elements
@@ -140,6 +142,7 @@
         queueList = document.getElementById('queue-list');
         queueCount = document.getElementById('queue-count');
         queuePauseBtn = document.getElementById('queue-pause-btn');
+        queueClearBtn = document.getElementById('queue-clear-btn');
         chatContainer = document.getElementById('chat-container');
         chipsContainer = document.getElementById('chips-container');
         autocompleteDropdown = document.getElementById('autocomplete-dropdown');
@@ -159,6 +162,8 @@
         // Get actions bar elements for edit mode
         actionsBar = document.querySelector('.actions-bar');
         actionsLeft = document.querySelector('.actions-left');
+        // End session button
+        endSessionBtn = document.getElementById('end-session-btn');
     }
 
     function createHistoryModal() {
@@ -271,6 +276,16 @@
         var buttonsContainer = document.createElement('div');
         buttonsContainer.className = 'approval-buttons';
 
+        // End button (session control - isolated on left with icon)
+        approvalEndBtn = document.createElement('button');
+        approvalEndBtn.className = 'approval-btn approval-end-btn';
+        approvalEndBtn.setAttribute('aria-label', 'End the session');
+        approvalEndBtn.innerHTML = '<span class="codicon codicon-debug-stop"></span> End';
+
+        // Divider between End and Yes/No
+        var buttonDivider = document.createElement('span');
+        buttonDivider.className = 'approval-divider';
+
         // No/Reject button (secondary action - text only)
         approvalNoBtn = document.createElement('button');
         approvalNoBtn.className = 'approval-btn approval-reject-btn';
@@ -283,7 +298,9 @@
         approvalContinueBtn.setAttribute('aria-label', 'Yes and continue');
         approvalContinueBtn.textContent = 'Yes';
 
-        // Assemble buttons
+        // Assemble buttons: [End] | [No] [Yes]
+        buttonsContainer.appendChild(approvalEndBtn);
+        buttonsContainer.appendChild(buttonDivider);
         buttonsContainer.appendChild(approvalNoBtn);
         buttonsContainer.appendChild(approvalContinueBtn);
 
@@ -563,10 +580,15 @@
 
         // Drag-and-drop image support on the input area
         var dropTarget = inputAreaContainer || chatInput;
+        console.log('[TaskSync] Setting up drag-drop, dropTarget found:', !!dropTarget);
         if (dropTarget) {
             // Helper: check if drag event might contain files or file URIs
             function hasDragFiles(dt) {
-                if (!dt || !dt.types) return false;
+                if (!dt || !dt.types) {
+                    console.log('[TaskSync] hasDragFiles: no dataTransfer or types');
+                    return false;
+                }
+                console.log('[TaskSync] hasDragFiles: types =', Array.from(dt.types).join(', '));
                 for (var i = 0; i < dt.types.length; i++) {
                     var t = dt.types[i];
                     if (t === 'Files' || t === 'text/uri-list' || t.indexOf('vscode') !== -1) return true;
@@ -575,6 +597,7 @@
             }
 
             dropTarget.addEventListener('dragover', function (e) {
+                console.log('[TaskSync] dragover event');
                 if (hasDragFiles(e.dataTransfer)) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -596,16 +619,20 @@
                 }
             });
             dropTarget.addEventListener('drop', function (e) {
+                console.log('[TaskSync] Drop event triggered');
                 e.preventDefault();
                 e.stopPropagation();
                 dropTarget.classList.remove('drag-over-input');
                 var handled = false;
 
+                console.log('[TaskSync] Files count:', e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files.length : 0);
                 // First: try standard File API (works for OS file manager drops)
                 if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
                     for (var i = 0; i < e.dataTransfer.files.length; i++) {
                         var file = e.dataTransfer.files[i];
+                        console.log('[TaskSync] File:', file.name, 'type:', file.type);
                         if (file.type.indexOf('image/') === 0) {
+                            console.log('[TaskSync] Processing image file:', file.name);
                             processImageFile(file);
                             handled = true;
                         }
@@ -652,6 +679,7 @@
 
         if (queueHeader) queueHeader.addEventListener('click', handleQueueHeaderClick);
         if (queuePauseBtn) queuePauseBtn.addEventListener('click', handleQueuePauseClick);
+        if (queueClearBtn) queueClearBtn.addEventListener('click', handleQueueClearClick);
         if (historyModalClose) historyModalClose.addEventListener('click', closeHistoryModal);
         if (historyModalClearAll) historyModalClearAll.addEventListener('click', clearAllPersistedHistory);
         if (historyModalOverlay) {
@@ -666,6 +694,10 @@
         // Approval modal button events
         if (approvalContinueBtn) approvalContinueBtn.addEventListener('click', handleApprovalContinue);
         if (approvalNoBtn) approvalNoBtn.addEventListener('click', handleApprovalNo);
+        if (approvalEndBtn) approvalEndBtn.addEventListener('click', handleApprovalEnd);
+
+        // End session button (always visible)
+        if (endSessionBtn) endSessionBtn.addEventListener('click', handleEndSessionClick);
 
         // Settings modal events
         if (settingsModalClose) settingsModalClose.addEventListener('click', closeSettingsModal);
@@ -957,6 +989,101 @@
         if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey) { e.preventDefault(); handleSend(); }
     }
 
+    /**
+     * Parse text to detect and extract list items.
+     * Supports: numbered (1. 1) 1:), lettered (a. A)), bulleted (- * •)
+     * @returns Array of items if list detected, or null if not a list
+     */
+    function parseListItems(text) {
+        if (!text || !text.trim()) return null;
+
+        var lines = text.split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
+        
+        // Need at least 2 lines to be considered a list
+        if (lines.length < 2) return null;
+
+        // Patterns for different list types
+        var numberedPattern = /^(\d+)[.\):\-]\s*(.+)$/;         // 1. or 1) or 1: or 1-
+        var letteredPattern = /^([a-zA-Z])[.\):\-]\s*(.+)$/;    // a. or A) or a: or a-
+        var bulletedPattern = /^[-*•]\s*(.+)$/;                 // - or * or •
+        var romanPattern = /^([ivxIVX]+)[.\):\-]\s*(.+)$/;      // i. or II) etc
+
+        var items = [];
+        var listType = null;
+        var expectedNumber = 1;
+        var expectedLetter = 'a';
+
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            var match;
+
+            // Try numbered pattern first
+            match = line.match(numberedPattern);
+            if (match) {
+                var num = parseInt(match[1], 10);
+                // For first item, detect list type. For subsequent, verify sequence.
+                if (i === 0) {
+                    listType = 'numbered';
+                    expectedNumber = num + 1;
+                } else if (listType === 'numbered') {
+                    // Allow some flexibility: item can be expectedNumber or continue from previous
+                    expectedNumber = num + 1;
+                } else {
+                    // List type mismatch
+                    return null;
+                }
+                items.push(match[2].trim());
+                continue;
+            }
+
+            // Try lettered pattern
+            match = line.match(letteredPattern);
+            if (match) {
+                var letter = match[1].toLowerCase();
+                if (i === 0) {
+                    listType = 'lettered';
+                    expectedLetter = String.fromCharCode(letter.charCodeAt(0) + 1);
+                } else if (listType === 'lettered') {
+                    expectedLetter = String.fromCharCode(letter.charCodeAt(0) + 1);
+                } else {
+                    return null;
+                }
+                items.push(match[2].trim());
+                continue;
+            }
+
+            // Try bulleted pattern
+            match = line.match(bulletedPattern);
+            if (match) {
+                if (i === 0) {
+                    listType = 'bulleted';
+                } else if (listType !== 'bulleted') {
+                    return null;
+                }
+                items.push(match[1].trim());
+                continue;
+            }
+
+            // Try roman numeral pattern
+            match = line.match(romanPattern);
+            if (match) {
+                if (i === 0) {
+                    listType = 'roman';
+                } else if (listType !== 'roman') {
+                    return null;
+                }
+                items.push(match[2].trim());
+                continue;
+            }
+
+            // Line doesn't match any list pattern - not a valid list
+            return null;
+        }
+
+        // Only return items if we detected a consistent list with at least 2 items
+        return items.length >= 2 ? items : null;
+    }
+
     function handleSend() {
         var text = chatInput ? chatInput.value.trim() : '';
         if (!text && currentAttachments.length === 0) return;
@@ -986,7 +1113,15 @@
 
         // If processing response (AI working) and no pending tool call, auto-queue the message
         if (isProcessingResponse && text) {
-            addToQueue(text);
+            // Check if text is a list - if so, add each item separately to queue
+            var listItems = parseListItems(text);
+            if (listItems && listItems.length > 0) {
+                listItems.forEach(function(item) {
+                    addToQueue(item);
+                });
+            } else {
+                addToQueue(text);
+            }
             // This reduces friction - user's prompt is in queue, so show them queue mode
             if (!queueEnabled) {
                 queueEnabled = true;
@@ -1009,7 +1144,15 @@
         }
 
         if (queueEnabled && text && !pendingToolCall) {
-            addToQueue(text);
+            // Check if text is a list - if so, add each item separately to queue
+            var listItems = parseListItems(text);
+            if (listItems && listItems.length > 0) {
+                listItems.forEach(function(item) {
+                    addToQueue(item);
+                });
+            } else {
+                addToQueue(text);
+            }
         } else {
             vscode.postMessage({ type: 'submit', value: text, attachments: currentAttachments });
         }
@@ -1082,9 +1225,21 @@
         }
     }
 
+    /**
+     * Update the end session button state based on whether "end" is queued
+     */
+    function updateEndSessionButtonState() {
+        if (!endSessionBtn) return;
+        // Check if "end" is in the queue
+        var hasEndInQueue = promptQueue.some(function (item) {
+            return item.prompt && item.prompt.toLowerCase().trim() === 'end';
+        });
+        endSessionBtn.classList.toggle('active', hasEndInQueue);
+    }
+
     function handleQueueHeaderClick(e) {
-        // Don't toggle collapse if clicking on the pause button
-        if (e.target.closest('.queue-pause-btn')) return;
+        // Don't toggle collapse if clicking on the pause or clear button
+        if (e.target.closest('.queue-pause-btn') || e.target.closest('.queue-clear-btn')) return;
         if (queueSection) queueSection.classList.toggle('collapsed');
     }
 
@@ -1095,6 +1250,17 @@
         } else {
             vscode.postMessage({ type: 'pauseQueue' });
         }
+    }
+
+    function handleQueueClearClick(e) {
+        e.stopPropagation(); // Prevent header click from triggering
+        if (promptQueue.length === 0) return;
+        // Clear queue locally and notify backend
+        promptQueue = [];
+        renderQueue();
+        updateQueueVisibility();
+        updateEndSessionButtonState();
+        vscode.postMessage({ type: 'clearQueue' });
     }
 
     function updateQueuePauseUI() {
@@ -1133,6 +1299,8 @@
                 updateQueueVisibility();
                 updateQueuePauseUI();
                 updateCardSelection();
+                // Update end session button state based on whether "end" is in queue
+                updateEndSessionButtonState();
                 // Hide welcome section if we have current session calls
                 updateWelcomeSectionVisibility();
                 break;
@@ -1183,6 +1351,7 @@
                 updateInteractiveApprovalToggleUI();
                 renderPromptsList();
                 updateInstructionUI();
+                updateTemplateIndicator();
                 break;
             case 'slashCommandResults':
                 showSlashDropdown(message.prompts || []);
@@ -2024,6 +2193,69 @@
     }
 
     /**
+     * Handle "End" button click in approval modal
+     * Sends "end" to stop the session/conversation
+     */
+    function handleApprovalEnd() {
+        if (!pendingToolCall) return;
+
+        // Hide approval modal
+        hideApprovalModal();
+
+        // Send "end" response to terminate the session
+        vscode.postMessage({ type: 'submit', value: 'end', attachments: [] });
+        if (chatInput) {
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+            updateInputHighlighter();
+        }
+        currentAttachments = [];
+        updateChipsDisplay();
+        updateSendButtonState();
+        saveWebviewState();
+    }
+
+    /**
+     * Handle End Session button click (always visible in actions bar)
+     * - If there's a pending request: send "end" immediately
+     * - If no pending request: add "end" to the queue
+     */
+    function handleEndSessionClick() {
+        if (pendingToolCall) {
+            // There's a pending request - send "end" immediately
+            hideApprovalModal();
+            hideChoicesBar();
+            vscode.postMessage({ type: 'submit', value: 'end', attachments: [] });
+            if (chatInput) {
+                chatInput.value = '';
+                chatInput.style.height = 'auto';
+                updateInputHighlighter();
+            }
+            currentAttachments = [];
+            updateChipsDisplay();
+            updateSendButtonState();
+            saveWebviewState();
+        } else {
+            // No pending request - add "end" to queue so it's processed after current task
+            addToQueue('end');
+            // Update UI to show "end" is queued
+            if (endSessionBtn) {
+                endSessionBtn.classList.add('active');
+            }
+            // Clear input
+            if (chatInput) {
+                chatInput.value = '';
+                chatInput.style.height = 'auto';
+                updateInputHighlighter();
+            }
+            currentAttachments = [];
+            updateChipsDisplay();
+            updateSendButtonState();
+            saveWebviewState();
+        }
+    }
+
+    /**
      * Show approval modal
      */
     function showApprovalModal() {
@@ -2569,18 +2801,30 @@
 
         promptsModalList.innerHTML = reusablePrompts.map(function (p, index) {
             var promptPreview = p.prompt.length > 200 ? p.prompt.substring(0, 200) + '...' : p.prompt;
-            return '<div class="prompt-card" data-id="' + escapeHtml(p.id) + '">' +
+            var templateBadge = p.isTemplate ? '<span class="template-badge" title="Auto-appended to all prompts"><span class="codicon codicon-pinned"></span> Template</span>' : '';
+            var templateBtnText = p.isTemplate ? 'Unset Template' : 'Set as Template';
+            var templateBtnClass = p.isTemplate ? 'pm-template-btn active' : 'pm-template-btn';
+            return '<div class="prompt-card' + (p.isTemplate ? ' is-template' : '') + '" data-id="' + escapeHtml(p.id) + '">' +
                 '<div class="prompt-card-header">' +
                 '<span class="prompt-card-name">/' + escapeHtml(p.name) + '</span>' +
+                templateBadge +
                 '<span class="prompt-card-index">#' + (index + 1) + '</span>' +
                 '</div>' +
                 '<div class="prompt-card-text">' + escapeHtml(promptPreview) + '</div>' +
                 '<div class="prompt-card-actions">' +
+                '<button class="prompt-card-btn ' + templateBtnClass + '" data-id="' + escapeHtml(p.id) + '" title="' + templateBtnText + '"><span class="codicon codicon-pinned"></span> ' + templateBtnText + '</button>' +
                 '<button class="prompt-card-btn pm-edit-btn" data-id="' + escapeHtml(p.id) + '" title="Edit"><span class="codicon codicon-edit"></span> Edit</button>' +
                 '<button class="prompt-card-btn pm-delete-btn" data-id="' + escapeHtml(p.id) + '" title="Delete"><span class="codicon codicon-trash"></span> Delete</button>' +
                 '</div></div>';
         }).join('');
 
+        // Bind template toggle
+        promptsModalList.querySelectorAll('.pm-template-btn').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var id = btn.getAttribute('data-id');
+                togglePromptTemplate(id);
+            });
+        });
         // Bind edit/delete
         promptsModalList.querySelectorAll('.pm-edit-btn').forEach(function (btn) {
             btn.addEventListener('click', function () {
@@ -2594,6 +2838,9 @@
                 deletePrompt(id);
             });
         });
+        
+        // Update template indicator in UI
+        updateTemplateIndicator();
     }
 
     // ===== Prompts Modal Functions =====
@@ -2675,6 +2922,56 @@
 
     function deletePrompt(id) {
         vscode.postMessage({ type: 'removeReusablePrompt', id: id });
+    }
+
+    /**
+     * Toggle a prompt as template (auto-append to all messages)
+     */
+    function togglePromptTemplate(id) {
+        var prompt = reusablePrompts.find(function (p) { return p.id === id; });
+        if (!prompt) return;
+
+        if (prompt.isTemplate) {
+            // Clear template
+            vscode.postMessage({ type: 'clearPromptTemplate' });
+        } else {
+            // Set as template
+            vscode.postMessage({ type: 'setPromptTemplate', id: id });
+        }
+    }
+
+    /**
+     * Update the template indicator near the input area
+     */
+    function updateTemplateIndicator() {
+        var indicator = document.getElementById('template-indicator');
+        var activeTemplate = reusablePrompts.find(function (p) { return p.isTemplate === true; });
+        
+        if (!indicator) {
+            // Create the indicator if it doesn't exist
+            var inputWrapper = document.getElementById('input-wrapper');
+            if (!inputWrapper) return;
+            
+            indicator = document.createElement('div');
+            indicator.id = 'template-indicator';
+            indicator.className = 'template-indicator hidden';
+            indicator.innerHTML = '<span class="codicon codicon-pinned"></span> <span class="template-name"></span> <button class="template-clear-btn" title="Disable template"><span class="codicon codicon-close"></span></button>';
+            inputWrapper.insertBefore(indicator, inputWrapper.firstChild);
+            
+            // Bind clear button
+            indicator.querySelector('.template-clear-btn').addEventListener('click', function () {
+                vscode.postMessage({ type: 'clearPromptTemplate' });
+            });
+        }
+        
+        var nameSpan = indicator.querySelector('.template-name');
+        
+        if (activeTemplate) {
+            nameSpan.textContent = 'Template: /' + activeTemplate.name;
+            indicator.classList.remove('hidden');
+        } else {
+            indicator.classList.add('hidden');
+        }
     }
 
     // ===== SLASH COMMAND FUNCTIONS =====
@@ -2951,7 +3248,16 @@
 
     function bindDragAndDrop() {
         if (!queueList) return;
+        
+        // Variables for touch drag
+        var touchDragItem = null;
+        var touchStartY = 0;
+        var touchCurrentY = 0;
+        var touchStartIndex = -1;
+        var touchPlaceholder = null;
+        
         queueList.querySelectorAll('.queue-item').forEach(function (item) {
+            // Mouse drag and drop (desktop)
             item.addEventListener('dragstart', function (e) {
                 e.dataTransfer.setData('text/plain', String(parseInt(item.getAttribute('data-index'), 10)));
                 item.classList.add('dragging');
@@ -2965,6 +3271,95 @@
                 var toIndex = parseInt(item.getAttribute('data-index'), 10);
                 item.classList.remove('drag-over');
                 if (fromIndex !== toIndex && !isNaN(fromIndex) && !isNaN(toIndex)) reorderQueue(fromIndex, toIndex);
+            });
+            
+            // Touch drag and drop (mobile/touch devices)
+            item.addEventListener('touchstart', function (e) {
+                // Only allow drag from the drag handle area (left side)
+                var touch = e.touches[0];
+                var itemRect = item.getBoundingClientRect();
+                var touchX = touch.clientX - itemRect.left;
+                
+                // Allow drag if touch is in the first 50px (drag handle area) or on the whole item
+                // This works better for small touch targets
+                touchDragItem = item;
+                touchStartY = touch.clientY;
+                touchCurrentY = touch.clientY;
+                touchStartIndex = parseInt(item.getAttribute('data-index'), 10);
+                
+                // Add dragging class after a short delay to distinguish from tap
+                setTimeout(function() {
+                    if (touchDragItem === item) {
+                        item.classList.add('dragging');
+                        item.style.opacity = '0.7';
+                    }
+                }, 150);
+            }, { passive: true });
+            
+            item.addEventListener('touchmove', function (e) {
+                if (touchDragItem !== item) return;
+                
+                var touch = e.touches[0];
+                touchCurrentY = touch.clientY;
+                
+                // Find the item we're hovering over
+                var items = queueList.querySelectorAll('.queue-item');
+                items.forEach(function(targetItem) {
+                    if (targetItem === item) return;
+                    
+                    var rect = targetItem.getBoundingClientRect();
+                    if (touchCurrentY >= rect.top && touchCurrentY <= rect.bottom) {
+                        targetItem.classList.add('drag-over');
+                    } else {
+                        targetItem.classList.remove('drag-over');
+                    }
+                });
+                
+                // Prevent scrolling while dragging
+                e.preventDefault();
+            }, { passive: false });
+            
+            item.addEventListener('touchend', function (e) {
+                if (touchDragItem !== item) return;
+                
+                item.classList.remove('dragging');
+                item.style.opacity = '';
+                
+                // Find the drop target
+                var items = queueList.querySelectorAll('.queue-item');
+                var toIndex = -1;
+                
+                items.forEach(function(targetItem, idx) {
+                    targetItem.classList.remove('drag-over');
+                    
+                    var rect = targetItem.getBoundingClientRect();
+                    if (touchCurrentY >= rect.top && touchCurrentY <= rect.bottom) {
+                        toIndex = parseInt(targetItem.getAttribute('data-index'), 10);
+                    }
+                });
+                
+                // Perform the reorder if valid
+                if (toIndex !== -1 && touchStartIndex !== toIndex && !isNaN(touchStartIndex) && !isNaN(toIndex)) {
+                    reorderQueue(touchStartIndex, toIndex);
+                }
+                
+                touchDragItem = null;
+                touchStartIndex = -1;
+            });
+            
+            item.addEventListener('touchcancel', function () {
+                if (touchDragItem === item) {
+                    item.classList.remove('dragging');
+                    item.style.opacity = '';
+                    
+                    var items = queueList.querySelectorAll('.queue-item');
+                    items.forEach(function(targetItem) {
+                        targetItem.classList.remove('drag-over');
+                    });
+                    
+                    touchDragItem = null;
+                    touchStartIndex = -1;
+                }
             });
         });
     }
@@ -3160,8 +3555,10 @@
     }
 
     function processImageFile(file) {
+        console.log('[TaskSync] processImageFile called for:', file.name);
         var reader = new FileReader();
         reader.onload = function (e) {
+            console.log('[TaskSync] FileReader loaded, sending saveImage message');
             if (e.target && e.target.result) vscode.postMessage({ type: 'saveImage', data: e.target.result, mimeType: file.type });
         };
         reader.onerror = function () {

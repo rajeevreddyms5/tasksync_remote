@@ -54,6 +54,9 @@ async function hasExternalMcpClientsAsync(): Promise<boolean> {
 }
 
 export function activate(context: vscode.ExtensionContext) {
+    // Store context reference for state storage
+    extensionContext = context;
+
     // Initialize context manager for #terminal, #problems features
     contextManager = new ContextManager();
     context.subscriptions.push({ dispose: () => contextManager?.dispose() });
@@ -74,13 +77,14 @@ export function activate(context: vscode.ExtensionContext) {
     const planReviewDisposable = registerPlanReviewTool(context, provider);
     context.subscriptions.push(planReviewDisposable);
 
-    // Inject instructions based on configured method
-    handleInstructionInjection();
+    // Inject instructions based on configured method (non-aggressive: only if needed)
+    handleInstructionInjection(false);
 
     // Listen for settings changes to toggle instruction injection
+    // User explicitly changed settings - force inject
     const configWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration('tasksync.instructionInjection') || e.affectsConfiguration('tasksync.instructionText')) {
-            handleInstructionInjection();
+            handleInstructionInjection(true); // Force inject when user changes settings
         }
     });
     context.subscriptions.push(configWatcher);
@@ -380,35 +384,264 @@ const TASKSYNC_SECTION_START = '<!-- [TaskSync] START -->';
 const TASKSYNC_SECTION_END = '<!-- [TaskSync] END -->';
 const TASKSYNC_MARKER = '[TaskSync]';
 
+// Storage keys for tracking injection state
+const INJECTION_STATE_KEY = 'tasksync.injectionState';
+
+interface InjectionState {
+    method: string;
+    contentHash: string;
+    timestamp: number;
+}
+
+// Extension context reference for state storage
+let extensionContext: vscode.ExtensionContext | undefined;
+
+/**
+ * Simple hash function to detect content changes
+ */
+function hashContent(content: string): string {
+    let hash = 0;
+    for (let i = 0; i < content.length; i++) {
+        const char = content.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString(16);
+}
+
+/**
+ * Get stored injection state from workspace state
+ */
+function getStoredInjectionState(): InjectionState | undefined {
+    if (!extensionContext) return undefined;
+    return extensionContext.workspaceState.get<InjectionState>(INJECTION_STATE_KEY);
+}
+
+/**
+ * Store injection state to workspace state
+ */
+async function storeInjectionState(state: InjectionState | undefined): Promise<void> {
+    if (!extensionContext) return;
+    await extensionContext.workspaceState.update(INJECTION_STATE_KEY, state);
+}
+
+/**
+ * Check if copilot-instructions.md has the correct TaskSync section
+ * Returns: 'correct' | 'missing' | 'modified' | 'corrupted' | 'no-file'
+ */
+async function checkCopilotInstructionsState(expectedContent: string): Promise<'correct' | 'missing' | 'modified' | 'corrupted' | 'no-file'> {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) return 'no-file';
+
+    const filePath = vscode.Uri.joinPath(workspaceFolders[0].uri, '.github', 'copilot-instructions.md');
+
+    try {
+        const fileData = await vscode.workspace.fs.readFile(filePath);
+        const content = Buffer.from(fileData).toString('utf-8');
+
+        const startIdx = content.indexOf(TASKSYNC_SECTION_START);
+        const endIdx = content.indexOf(TASKSYNC_SECTION_END);
+
+        // No TaskSync section found
+        if (startIdx === -1 && endIdx === -1) {
+            return 'missing';
+        }
+
+        // Corrupted: only one marker found
+        if ((startIdx === -1) !== (endIdx === -1)) {
+            return 'corrupted';
+        }
+
+        // Corrupted: end marker before start marker
+        if (endIdx < startIdx) {
+            return 'corrupted';
+        }
+
+        // Extract current section content
+        const currentSection = content.substring(startIdx, endIdx + TASKSYNC_SECTION_END.length);
+        const expectedSection = `${TASKSYNC_SECTION_START}\n${expectedContent}\n${TASKSYNC_SECTION_END}`;
+
+        if (currentSection === expectedSection) {
+            return 'correct';
+        }
+
+        return 'modified';
+    } catch {
+        return 'no-file';
+    }
+}
+
+/**
+ * Check if codeGeneration.instructions has the correct TaskSync entry
+ * Returns: 'correct' | 'missing' | 'modified'
+ */
+function checkCodeGenSettingsState(expectedContent: string): 'correct' | 'missing' | 'modified' {
+    const settingsText = `${TASKSYNC_MARKER} ${expectedContent}`;
+    const copilotConfig = vscode.workspace.getConfiguration('github.copilot.chat');
+    const currentInstructions = copilotConfig.get<Array<{ text?: string; file?: string }>>('codeGeneration.instructions', []);
+
+    const existingEntry = currentInstructions.find(
+        (inst) => inst.text && inst.text.includes(TASKSYNC_MARKER)
+    );
+
+    if (!existingEntry) {
+        return 'missing';
+    }
+
+    if (existingEntry.text === settingsText) {
+        return 'correct';
+    }
+
+    return 'modified';
+}
+
 /**
  * Handle instruction injection based on the selected method.
  * Supports: 'off', 'copilotInstructionsMd', 'codeGenerationSetting'
+ * 
+ * Smart behavior:
+ * - On IDE restart: only inject if not already correctly injected
+ * - Detects user changes and warns appropriately
+ * - Handles edge cases like corrupted markers
+ * 
+ * @param forceInject - If true, bypass state checks and force injection (used when settings change)
  */
-async function handleInstructionInjection(): Promise<void> {
+async function handleInstructionInjection(forceInject: boolean = false): Promise<void> {
     const config = vscode.workspace.getConfiguration('tasksync');
     const method = config.get<string>('instructionInjection', 'off');
+    const instructionText = getInstructionText();
 
     // Migrate old global-level instructions if they exist
     migrateGlobalToWorkspaceInstructions();
 
+    const contentHash = hashContent(instructionText);
+    const storedState = getStoredInjectionState();
+
     try {
         switch (method) {
-            case 'copilotInstructionsMd':
+            case 'copilotInstructionsMd': {
                 // Remove from codeGeneration.instructions if switching methods
                 removeFromCodeGenSettings();
-                await injectIntoCopilotInstructionsMd();
+
+                // Check current state of the file
+                const fileState = await checkCopilotInstructionsState(instructionText);
+
+                if (fileState === 'correct' && !forceInject) {
+                    // Already correctly injected - nothing to do
+                    console.log('[TaskSync] Instructions already correctly injected in copilot-instructions.md');
+                    return;
+                }
+
+                if (fileState === 'corrupted') {
+                    // Corrupted markers - warn user and offer to fix
+                    const action = await vscode.window.showWarningMessage(
+                        'TaskSync detected corrupted instruction markers in copilot-instructions.md. This may cause issues.',
+                        'Fix Now',
+                        'Ignore'
+                    );
+                    if (action === 'Fix Now') {
+                        await removeFromCopilotInstructionsMd();
+                        await injectIntoCopilotInstructionsMd(true); // Force inject without prompting
+                    }
+                    return;
+                }
+
+                if (fileState === 'modified' && !forceInject) {
+                    // User modified the TaskSync section - warn them
+                    const action = await vscode.window.showWarningMessage(
+                        'TaskSync instructions in copilot-instructions.md have been modified. Re-inject to restore expected behavior?',
+                        'Re-inject',
+                        'Keep Current'
+                    );
+                    if (action === 'Re-inject') {
+                        await injectIntoCopilotInstructionsMd(true);
+                    }
+                    return;
+                }
+
+                if (fileState === 'missing' || fileState === 'no-file') {
+                    // Check if this is a settings-triggered injection (force) or IDE restart
+                    if (!forceInject && storedState?.method === method && storedState?.contentHash === contentHash) {
+                        // Previously injected with same settings but file/section is now missing
+                        // User likely deleted it intentionally - warn but don't auto-inject
+                        const action = await vscode.window.showWarningMessage(
+                            'TaskSync instructions are configured but not present in copilot-instructions.md. Re-inject?',
+                            'Re-inject',
+                            'Turn Off'
+                        );
+                        if (action === 'Re-inject') {
+                            await injectIntoCopilotInstructionsMd(false);
+                        } else if (action === 'Turn Off') {
+                            await config.update('instructionInjection', 'off', vscode.ConfigurationTarget.Workspace);
+                        }
+                        return;
+                    }
+                    // First time injection or settings changed - proceed with injection
+                    await injectIntoCopilotInstructionsMd(false);
+                }
+
+                // Store the new state
+                await storeInjectionState({ method, contentHash, timestamp: Date.now() });
                 break;
-            case 'codeGenerationSetting':
+            }
+
+            case 'codeGenerationSetting': {
                 // Remove from copilot-instructions.md if switching methods
                 await removeFromCopilotInstructionsMd();
-                injectIntoCodeGenSettings();
+
+                // Check current state
+                const settingsState = checkCodeGenSettingsState(instructionText);
+
+                if (settingsState === 'correct' && !forceInject) {
+                    // Already correctly injected
+                    console.log('[TaskSync] Instructions already correctly injected in codeGeneration settings');
+                    return;
+                }
+
+                if (settingsState === 'modified' && !forceInject) {
+                    // User modified - warn
+                    const action = await vscode.window.showWarningMessage(
+                        'TaskSync instructions in Code Generation settings have been modified. Re-inject?',
+                        'Re-inject',
+                        'Keep Current'
+                    );
+                    if (action === 'Re-inject') {
+                        injectIntoCodeGenSettings();
+                    }
+                    return;
+                }
+
+                if (settingsState === 'missing') {
+                    if (!forceInject && storedState?.method === method && storedState?.contentHash === contentHash) {
+                        // Previously injected but now missing
+                        const action = await vscode.window.showWarningMessage(
+                            'TaskSync instructions are configured but not present in Code Generation settings. Re-inject?',
+                            'Re-inject',
+                            'Turn Off'
+                        );
+                        if (action === 'Re-inject') {
+                            injectIntoCodeGenSettings();
+                        } else if (action === 'Turn Off') {
+                            await config.update('instructionInjection', 'off', vscode.ConfigurationTarget.Workspace);
+                        }
+                        return;
+                    }
+                    injectIntoCodeGenSettings();
+                }
+
+                await storeInjectionState({ method, contentHash, timestamp: Date.now() });
                 break;
+            }
+
             case 'off':
-            default:
+            default: {
                 // Remove from both locations
                 removeFromCodeGenSettings();
                 await removeFromCopilotInstructionsMd();
+                // Clear stored state
+                await storeInjectionState(undefined);
                 break;
+            }
         }
     } catch (err) {
         console.error('[TaskSync] Failed to handle instruction injection:', err);
@@ -425,9 +658,9 @@ function getInstructionText(): string {
 
 /**
  * Inject TaskSync instructions into .github/copilot-instructions.md
- * Prompts user for confirmation before creating/modifying the file.
+ * @param skipPrompt - If true, inject without prompting user (used for re-injection after user confirms)
  */
-async function injectIntoCopilotInstructionsMd(): Promise<void> {
+async function injectIntoCopilotInstructionsMd(skipPrompt: boolean = false): Promise<void> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) return;
 
@@ -469,19 +702,22 @@ async function injectIntoCopilotInstructionsMd(): Promise<void> {
             return;
         }
 
-        // Need to create or append — ask user for confirmation
-        const action = fileExists ? 'append to' : 'create';
-        const confirm = await vscode.window.showInformationMessage(
-            `TaskSync wants to ${action} .github/copilot-instructions.md with TaskSync tool instructions. This ensures the AI always calls ask_user and plan_review.`,
-            'Allow',
-            'Cancel'
-        );
+        // Need to create or append
+        if (!skipPrompt) {
+            // Ask user for confirmation
+            const action = fileExists ? 'append to' : 'create';
+            const confirm = await vscode.window.showInformationMessage(
+                `TaskSync wants to ${action} .github/copilot-instructions.md with TaskSync tool instructions. This ensures the AI always calls ask_user and plan_review.`,
+                'Allow',
+                'Cancel'
+            );
 
-        if (confirm !== 'Allow') {
-            // User declined — reset setting to 'off'
-            const cfg = vscode.workspace.getConfiguration('tasksync');
-            cfg.update('instructionInjection', 'off', vscode.ConfigurationTarget.Workspace);
-            return;
+            if (confirm !== 'Allow') {
+                // User declined — reset setting to 'off'
+                const cfg = vscode.workspace.getConfiguration('tasksync');
+                cfg.update('instructionInjection', 'off', vscode.ConfigurationTarget.Workspace);
+                return;
+            }
         }
 
         if (fileExists) {

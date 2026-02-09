@@ -898,6 +898,35 @@ body {
     outline-offset: -1px;
 }
 
+/* Clear queue button */
+.queue-clear-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    margin-left: 4px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--vscode-foreground);
+    opacity: 0.7;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.queue-clear-btn:hover {
+    opacity: 1;
+    background-color: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-errorForeground);
+}
+
+.queue-clear-btn:focus {
+    outline: 1px solid var(--vscode-focusBorder);
+    outline-offset: -1px;
+}
+
 /* Paused state */
 .queue-section.paused .queue-header {
     background-color: var(--vscode-inputValidation-warningBackground, rgba(255, 200, 0, 0.1));
@@ -954,10 +983,17 @@ body {
 .queue-item.dragging {
     opacity: 0.5;
     cursor: grabbing;
+    /* Touch dragging needs higher z-index */
+    z-index: 10;
+    position: relative;
 }
 
 .queue-item.drag-over {
     background-color: var(--vscode-list-activeSelectionBackground);
+    /* Make drop target more visible */
+    border-left: 3px solid var(--vscode-textLink-foreground, #3794ff);
+    transform: scale(1.02);
+    transition: transform 0.1s ease, border-left 0.1s ease;
 }
 
 .queue-item .bullet {
@@ -1407,6 +1443,25 @@ button#send-btn .codicon {
 .icon-btn:hover {
     background-color: var(--vscode-toolbar-hoverBackground);
     color: var(--vscode-foreground);
+}
+
+/* End Session Button - always visible in actions bar */
+.end-session-btn {
+    color: var(--vscode-descriptionForeground);
+}
+
+.end-session-btn:hover {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+.end-session-btn.active {
+    color: var(--vscode-editorWarning-foreground, #cca700);
+    animation: end-session-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes end-session-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
 }
 
 /* Mode Selector */
@@ -1870,6 +1925,32 @@ button#send-btn:disabled {
     color: var(--vscode-errorForeground);
 }
 
+/* End button - secondary style with warning color and icon */
+.approval-end-btn {
+    background: transparent;
+    color: var(--vscode-foreground);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.approval-end-btn .codicon {
+    font-size: 12px;
+}
+
+.approval-end-btn:hover {
+    background-color: var(--vscode-toolbar-hoverBackground);
+    color: var(--vscode-editorWarning-foreground, #cca700);
+}
+
+/* Divider between End and Yes/No buttons */
+.approval-divider {
+    width: 1px;
+    height: 16px;
+    background-color: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+    margin: 0 4px;
+}
+
 /* Accept button - primary style */
 .approval-accept-btn {
     background-color: var(--vscode-button-background);
@@ -1881,7 +1962,8 @@ button#send-btn:disabled {
 }
 
 .approval-accept-btn:active,
-.approval-reject-btn:active {
+.approval-reject-btn:active,
+.approval-end-btn:active {
     transform: scale(0.98);
 }
 
@@ -3018,6 +3100,83 @@ button#send-btn:disabled {
 .prompt-card-btn:hover {
     opacity: 1;
     background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.1));
+}
+
+/* Template badge in prompt card */
+.template-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 6px;
+    background: var(--vscode-textLink-foreground, #3794ff);
+    color: var(--vscode-editor-background, #1e1e1e);
+    border-radius: 8px;
+    margin-left: auto;
+}
+
+.template-badge .codicon {
+    font-size: 10px;
+}
+
+/* Template card highlight */
+.prompt-card.is-template {
+    border-color: var(--vscode-textLink-foreground, #3794ff);
+    box-shadow: 0 0 0 1px var(--vscode-textLink-foreground, #3794ff) inset;
+}
+
+/* Template button active state */
+.pm-template-btn.active {
+    color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.pm-template-btn .codicon {
+    font-size: 12px;
+}
+
+/* Template indicator near input */
+.template-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    background: var(--vscode-inputOption-activeBackground, rgba(55, 148, 255, 0.15));
+    border: 1px solid var(--vscode-textLink-foreground, #3794ff);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.template-indicator.hidden {
+    display: none;
+}
+
+.template-indicator .codicon {
+    font-size: 14px;
+}
+
+.template-indicator .template-name {
+    flex: 1;
+    font-weight: 500;
+}
+
+.template-indicator .template-clear-btn {
+    background: none;
+    border: none;
+    color: inherit;
+    opacity: 0.7;
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+    border-radius: 3px;
+}
+
+.template-indicator .template-clear-btn:hover {
+    opacity: 1;
+    background: var(--vscode-list-hoverBackground, rgba(128,128,128,0.2));
 }
 
 .prompts-modal-add-form {

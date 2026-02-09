@@ -65,6 +65,7 @@ export interface ReusablePrompt {
     id: string;
     name: string;       // Short name for /slash command (e.g., "fix", "test", "refactor")
     prompt: string;     // Full prompt text
+    isTemplate?: boolean; // If true, this prompt's content auto-appends to all user messages
 }
 
 // Message types
@@ -114,8 +115,10 @@ type FromWebviewMessage =
     | { type: 'updateAutoFocusPanelSetting'; enabled: boolean }
     | { type: 'updateMobileNotificationSetting'; enabled: boolean }
     | { type: 'addReusablePrompt'; name: string; prompt: string }
-    | { type: 'editReusablePrompt'; id: string; name: string; prompt: string }
+    | { type: 'editReusablePrompt'; id: string; name: string; prompt: string; isTemplate?: boolean }
     | { type: 'removeReusablePrompt'; id: string }
+    | { type: 'setPromptTemplate'; id: string }  // Set a prompt as the active template
+    | { type: 'clearPromptTemplate' }            // Clear the active template
     | { type: 'searchSlashCommands'; query: string }
     | { type: 'openExternal'; url: string }
     | { type: 'searchContext'; query: string }
@@ -930,11 +933,23 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
         // Use explicit choices from the tool call if provided, otherwise parse from question text
         let choices: ParsedChoice[];
         if (explicitChoices && explicitChoices.length > 0) {
-            choices = explicitChoices.map(c => ({
-                label: c.label.length > 40 ? c.label.substring(0, 37) + '...' : c.label,
-                value: c.value,
-                shortLabel: c.value.length <= 3 ? c.value : undefined
-            }));
+            // Parse the question text to extract short labels (1, 2, 3 or A, B, C)
+            // This ensures buttons show "1", "2", "3" even when AI provides full text values
+            const parsedChoices = this._parseChoices(question);
+            
+            choices = explicitChoices.map((c, index) => {
+                // Try to use parsed shortLabel by matching index
+                const parsed = parsedChoices[index];
+                // Priority: parsed shortLabel > short value (<=3 chars) > numeric index
+                const shortLabel = parsed?.shortLabel 
+                    || (c.value.length <= 3 ? c.value : String(index + 1));
+                
+                return {
+                    label: c.label.length > 40 ? c.label.substring(0, 37) + '...' : c.label,
+                    value: c.value,
+                    shortLabel: shortLabel
+                };
+            });
         } else {
             choices = this._parseChoices(question);
         }
@@ -1083,10 +1098,16 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 this._handleAddReusablePrompt(message.name, message.prompt);
                 break;
             case 'editReusablePrompt':
-                this._handleEditReusablePrompt(message.id, message.name, message.prompt);
+                this._handleEditReusablePrompt(message.id, message.name, message.prompt, message.isTemplate);
                 break;
             case 'removeReusablePrompt':
                 this._handleRemoveReusablePrompt(message.id);
+                break;
+            case 'setPromptTemplate':
+                this._handleSetPromptTemplate(message.id);
+                break;
+            case 'clearPromptTemplate':
+                this._handleClearPromptTemplate();
                 break;
             case 'updateInstructionInjection':
                 this._handleUpdateInstructionInjection(message.method);
@@ -1206,7 +1227,10 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 this._setProcessingState(true);
 
                 this._updateCurrentSessionUI();
-                resolve({ value, queue: this._queueEnabled, attachments });
+                
+                // Append template to the prompt if active
+                const finalValue = this._appendTemplateToPrompt(value);
+                resolve({ value: finalValue, queue: this._queueEnabled, attachments });
                 this._pendingRequests.delete(this._currentToolCallId);
                 this._currentToolCallId = null;
             } else {
@@ -1335,10 +1359,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             // Check cache first (TTL-based)
             const cached = this._fileSearchCache.get(cacheKey);
             if (cached && (Date.now() - cached.timestamp) < this._FILE_CACHE_TTL_MS) {
-                this._view?.webview.postMessage({
-                    type: 'fileSearchResults',
+                const cachedResultMessage = {
+                    type: 'fileSearchResults' as const,
                     files: cached.results
-                } as ToWebviewMessage);
+                };
+                // Send to local webview and broadcast to remote clients
+                this._view?.webview.postMessage(cachedResultMessage as ToWebviewMessage);
+                this._broadcastCallback?.(cachedResultMessage as ToWebviewMessage);
                 return;
             }
 
@@ -1442,16 +1469,24 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                 if (firstKey) this._fileSearchCache.delete(firstKey);
             }
 
-            this._view?.webview.postMessage({
-                type: 'fileSearchResults',
+            const searchResultMessage = {
+                type: 'fileSearchResults' as const,
                 files: allResults
-            } as ToWebviewMessage);
+            };
+            
+            // Send to local webview
+            this._view?.webview.postMessage(searchResultMessage as ToWebviewMessage);
+            // Also broadcast to remote clients
+            this._broadcastCallback?.(searchResultMessage as ToWebviewMessage);
         } catch (error) {
             console.error('File search error:', error);
-            this._view?.webview.postMessage({
-                type: 'fileSearchResults',
+            const emptyResultMessage = {
+                type: 'fileSearchResults' as const,
                 files: []
-            } as ToWebviewMessage);
+            };
+            this._view?.webview.postMessage(emptyResultMessage as ToWebviewMessage);
+            // Also broadcast empty results to remote clients
+            this._broadcastCallback?.(emptyResultMessage as ToWebviewMessage);
         }
     }
 
@@ -1535,10 +1570,17 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
             this._attachments.push(attachment);
 
-            this._view?.webview.postMessage({
+            const imageSavedMessage = {
                 type: 'imageSaved',
                 attachment
-            } as ToWebviewMessage);
+            } as ToWebviewMessage;
+
+            this._view?.webview.postMessage(imageSavedMessage);
+
+            // Broadcast to remote clients
+            if (this._broadcastCallback) {
+                this._broadcastCallback(imageSavedMessage);
+            }
 
             this._updateAttachmentsUI();
         } catch (error) {
@@ -1611,10 +1653,17 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
      * Update attachments UI
      */
     private _updateAttachmentsUI(): void {
-        this._view?.webview.postMessage({
+        const updateMessage = {
             type: 'updateAttachments',
             attachments: this._attachments
-        } as ToWebviewMessage);
+        } as ToWebviewMessage;
+
+        this._view?.webview.postMessage(updateMessage);
+
+        // Broadcast to remote clients
+        if (this._broadcastCallback) {
+            this._broadcastCallback(updateMessage);
+        }
     }
 
     /**
@@ -1697,7 +1746,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             this._saveQueueToDisk();
             this._updateQueueUI();
 
-            resolve({ value: queuedPrompt.prompt, queue: true, attachments: queuedPrompt.attachments || [] });
+            // Append template to the prompt if active
+            const finalValue = this._appendTemplateToPrompt(queuedPrompt.prompt);
+            resolve({ value: finalValue, queue: true, attachments: queuedPrompt.attachments || [] });
             this._pendingRequests.delete(this._currentToolCallId!);
             this._currentToolCallId = null;
         } else {
@@ -1792,6 +1843,66 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     private _handleResumeQueue(): void {
         this._queuePaused = false;
         this._updateQueueUI();
+
+        // If there's a pending request and queue has items, auto-process immediately
+        if (this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId) && this._promptQueue.length > 0) {
+            this._processQueueForPendingRequest();
+        }
+    }
+
+    /**
+     * Process the next queue item for a pending request
+     */
+    private _processQueueForPendingRequest(): void {
+        if (!this._currentToolCallId || this._queuePaused || this._promptQueue.length === 0) {
+            return;
+        }
+
+        const resolve = this._pendingRequests.get(this._currentToolCallId);
+        if (!resolve) {
+            return;
+        }
+
+        const queuedPrompt = this._promptQueue.shift();
+        if (!queuedPrompt) {
+            return;
+        }
+
+        this._saveQueueToDisk();
+        this._updateQueueUI();
+
+        // Get the pending entry to update
+        const pendingEntry = this._currentSessionCallsMap.get(this._currentToolCallId);
+        
+        if (pendingEntry && pendingEntry.status === 'pending') {
+            // Update existing pending entry
+            pendingEntry.response = queuedPrompt.prompt;
+            pendingEntry.attachments = queuedPrompt.attachments || [];
+            pendingEntry.status = 'completed';
+            pendingEntry.timestamp = Date.now();
+            pendingEntry.isFromQueue = true;
+
+            // Send toolCallCompleted to trigger "Working...." state in webview
+            this._postMessage({
+                type: 'toolCallCompleted',
+                entry: pendingEntry
+            } as ToWebviewMessage);
+
+            // Update processing state - AI is now processing the user's response
+            this._setProcessingState(true);
+        }
+
+        this._updateCurrentSessionUI();
+        
+        // Append template to the prompt if active
+        const finalValue = this._appendTemplateToPrompt(queuedPrompt.prompt);
+        resolve({
+            value: finalValue,
+            queue: true,
+            attachments: queuedPrompt.attachments || []
+        });
+        this._pendingRequests.delete(this._currentToolCallId);
+        this._currentToolCallId = null;
     }
 
     /**
@@ -2051,7 +2162,7 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     /**
      * Handle editing a reusable prompt
      */
-    private async _handleEditReusablePrompt(id: string, name: string, prompt: string): Promise<void> {
+    private async _handleEditReusablePrompt(id: string, name: string, prompt: string, isTemplate?: boolean): Promise<void> {
         const trimmedName = name.trim().toLowerCase().replace(/\s+/g, '-');
         const trimmedPrompt = prompt.trim();
 
@@ -2068,6 +2179,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
 
         existingPrompt.name = trimmedName;
         existingPrompt.prompt = trimmedPrompt;
+        
+        // If setting this as template, clear other templates first
+        if (isTemplate) {
+            this._reusablePrompts.forEach(p => p.isTemplate = false);
+            existingPrompt.isTemplate = true;
+        } else if (isTemplate === false) {
+            existingPrompt.isTemplate = false;
+        }
 
         await this._saveReusablePrompts();
         this._updateSettingsUI();
@@ -2083,6 +2202,52 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
     }
 
     /**
+     * Handle setting a prompt as the active template
+     */
+    private async _handleSetPromptTemplate(id: string): Promise<void> {
+        // Clear all templates first
+        this._reusablePrompts.forEach(p => p.isTemplate = false);
+        
+        // Set the specified prompt as template
+        const prompt = this._reusablePrompts.find(p => p.id === id);
+        if (prompt) {
+            prompt.isTemplate = true;
+        }
+        
+        await this._saveReusablePrompts();
+        this._updateSettingsUI();
+    }
+
+    /**
+     * Handle clearing the active template
+     */
+    private async _handleClearPromptTemplate(): Promise<void> {
+        this._reusablePrompts.forEach(p => p.isTemplate = false);
+        await this._saveReusablePrompts();
+        this._updateSettingsUI();
+    }
+
+    /**
+     * Get the active template prompt content (if any)
+     */
+    private _getActiveTemplate(): string | undefined {
+        const template = this._reusablePrompts.find(p => p.isTemplate === true);
+        return template?.prompt;
+    }
+
+    /**
+     * Append active template to a prompt (if template is active)
+     */
+    private _appendTemplateToPrompt(prompt: string): string {
+        const template = this._getActiveTemplate();
+        if (!template) {
+            return prompt;
+        }
+        // Append template with clear separator
+        return `${prompt}\n\n[Auto-appended instructions]\n${template}`;
+    }
+
+    /**
      * Handle searching slash commands for autocomplete
      */
     private _handleSearchSlashCommands(query: string): void {
@@ -2092,10 +2257,14 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
             p.prompt.toLowerCase().includes(queryLower)
         );
 
-        this._view?.webview.postMessage({
-            type: 'slashCommandResults',
+        const message = {
+            type: 'slashCommandResults' as const,
             prompts: matchingPrompts
-        } as ToWebviewMessage);
+        };
+        
+        // Send to local webview and broadcast to remote clients
+        this._view?.webview.postMessage(message as ToWebviewMessage);
+        this._broadcastCallback?.(message as ToWebviewMessage);
     }
 
     /**
@@ -2483,6 +2652,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     </div>
                     <span class="queue-header-title">Prompt Queue</span>
                     <span class="queue-count" id="queue-count" aria-live="polite">0</span>
+                    <button class="queue-clear-btn" id="queue-clear-btn" title="Clear all queue items" aria-label="Clear queue">
+                        <span class="codicon codicon-trash" aria-hidden="true"></span>
+                    </button>
                     <button class="queue-pause-btn" id="queue-pause-btn" title="Pause/Resume queue processing" aria-label="Pause queue">
                         <span class="codicon codicon-debug-pause" aria-hidden="true"></span>
                     </button>
@@ -2515,6 +2687,9 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     </div>
                 </div>
                 <div class="actions-right">
+                    <button id="end-session-btn" class="icon-btn end-session-btn" title="End session" aria-label="End session">
+                        <span class="codicon codicon-debug-stop"></span>
+                    </button>
                     <button id="send-btn" title="Send message" aria-label="Send message">
                         <span class="codicon codicon-arrow-up"></span>
                     </button>
@@ -2801,11 +2976,13 @@ export class TaskSyncWebviewProvider implements vscode.WebviewViewProvider, vsco
                     const m = firstGroup[idx];
                     let cleanText = m.text.replace(/[?!]+$/, '').trim();
                     const displayText = cleanText.length > 40 ? cleanText.substring(0, 37) + '...' : cleanText;
-                    const num = (idx + 1).toString();
+                    // For bullet points, use the actual option text as shortLabel (truncated for button display)
+                    // This differs from numbered/lettered options where we use 1/2/3 or A/B/C
+                    const shortDisplay = cleanText.length > 20 ? cleanText.substring(0, 17) + '...' : cleanText;
                     choices.push({
                         label: displayText,
-                        value: num,
-                        shortLabel: num
+                        value: cleanText, // Use actual text as value for bullet points
+                        shortLabel: shortDisplay // Show actual option text on button
                     });
                 }
                 return choices;

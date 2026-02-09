@@ -1312,6 +1312,7 @@ self.addEventListener('fetch', event => {
             --vscode-foreground: #cccccc;
             --vscode-descriptionForeground: #9d9d9d;
             --vscode-errorForeground: #f48771;
+            --vscode-editorWarning-foreground: #cca700;
             --vscode-focusBorder: #007fd4;
             --vscode-sideBar-background: #1e1e1e;
             --vscode-editor-background: #1e1e1e;
@@ -1342,6 +1343,7 @@ self.addEventListener('fetch', event => {
             --vscode-foreground: #3c3c3c;
             --vscode-descriptionForeground: #717171;
             --vscode-errorForeground: #cd3131;
+            --vscode-editorWarning-foreground: #bf8803;
             --vscode-focusBorder: #0090f1;
             --vscode-sideBar-background: #f3f3f3;
             --vscode-editor-background: #ffffff;
@@ -2263,6 +2265,15 @@ self.addEventListener('fetch', event => {
             <span class="remote-header-title">TaskSync</span>
         </div>
         <div class="remote-header-actions">
+            <button class="remote-header-btn" id="notification-permission-btn" title="Enable Notifications" style="display:none;">
+                <span class="codicon codicon-bell-dot"></span>
+            </button>
+            <button class="remote-header-btn" id="prompts-modal-btn" title="Reusable Prompts">
+                <span class="codicon codicon-symbol-keyword"></span>
+            </button>
+            <button class="remote-header-btn" id="settings-modal-btn" title="Settings">
+                <span class="codicon codicon-gear"></span>
+            </button>
             <button class="remote-header-btn" id="theme-toggle-btn" title="Toggle Theme">
                 <span class="codicon codicon-symbol-color"></span>
             </button>
@@ -2346,6 +2357,9 @@ self.addEventListener('fetch', event => {
                         </div>
                         <span class="queue-header-title">Prompt Queue</span>
                         <span class="queue-count" id="queue-count" aria-live="polite">0</span>
+                        <button class="queue-clear-btn" id="queue-clear-btn" title="Clear all queue items" aria-label="Clear queue">
+                            <span class="codicon codicon-trash" aria-hidden="true"></span>
+                        </button>
                         <button class="queue-pause-btn" id="queue-pause-btn" title="Pause/Resume queue processing" aria-label="Pause queue">
                             <span class="codicon codicon-debug-pause" aria-hidden="true"></span>
                         </button>
@@ -2366,9 +2380,6 @@ self.addEventListener('fetch', event => {
                     </div>
                     <div class="actions-bar">
                         <div class="actions-left">
-                            <button id="attach-btn" class="icon-btn" title="Add attachment (+)" aria-label="Add attachment">
-                                <span class="codicon codicon-add"></span>
-                            </button>
                             <div class="mode-selector" id="mode-selector">
                                 <button id="mode-btn" class="mode-btn" title="Select mode" aria-label="Select mode">
                                     <span id="mode-label">Queue</span>
@@ -2377,6 +2388,9 @@ self.addEventListener('fetch', event => {
                             </div>
                         </div>
                         <div class="actions-right">
+                            <button id="end-session-btn" class="icon-btn end-session-btn" title="End session" aria-label="End session">
+                                <span class="codicon codicon-debug-stop"></span>
+                            </button>
                             <button id="send-btn" title="Send message" aria-label="Send message">
                                 <span class="codicon codicon-arrow-up"></span>
                             </button>
@@ -2581,47 +2595,113 @@ self.addEventListener('fetch', event => {
             if ('Notification' in window && Notification.permission === 'default') {
                 Notification.requestPermission().then(function(permission) {
                     console.log('[TaskSync] Notification permission:', permission);
+                    updateNotificationButton();
                 });
             }
         }
         
-        // Request notification permission on page load for remote clients
-        requestNotificationPermission();
-        
-        function showMobileNotification(prompt) {
+        // Update notification button visibility based on permission state
+        function updateNotificationButton() {
+            const notifBtn = document.getElementById('notification-permission-btn');
+            if (!notifBtn) return;
+            
             if (!('Notification' in window)) {
-                console.log('[TaskSync] Browser does not support notifications');
-                return;
-            }
-            if (Notification.permission !== 'granted') {
-                console.log('[TaskSync] Notification permission not granted:', Notification.permission);
-                // Request permission if not yet asked
-                if (Notification.permission === 'default') {
-                    requestNotificationPermission();
-                }
+                // Browser doesn't support notifications - hide button
+                notifBtn.style.display = 'none';
                 return;
             }
             
-            var preview = prompt.length > 100 ? prompt.substring(0, 97) + '...' : prompt;
-            try {
-                console.log('[TaskSync] Showing browser notification:', preview.substring(0, 50));
-                var notification = new Notification('TaskSync', {
-                    body: preview,
-                    icon: '/media/TS-logo.svg',
-                    tag: 'tasksync-pending', // Replace previous notification
-                    requireInteraction: true,
-                    silent: false
-                });
-                notification.onclick = function() {
-                    window.focus();
-                    notification.close();
-                };
-                // Auto-close after 30 seconds
-                setTimeout(function() { notification.close(); }, 30000);
-            } catch (e) {
-                console.error('[TaskSync] Notification error:', e);
+            if (Notification.permission === 'default') {
+                // Permission not yet requested - show button with bell-dot
+                notifBtn.style.display = 'flex';
+                notifBtn.innerHTML = '<span class="codicon codicon-bell-dot"></span>';
+                notifBtn.title = 'Enable Push Notifications';
+            } else if (Notification.permission === 'granted') {
+                // Permission granted - show bell (solid)
+                notifBtn.style.display = 'flex';
+                notifBtn.innerHTML = '<span class="codicon codicon-bell"></span>';
+                notifBtn.title = 'Notifications Enabled';
+            } else {
+                // Permission denied - show bell-slash
+                notifBtn.style.display = 'flex';
+                notifBtn.innerHTML = '<span class="codicon codicon-bell-slash"></span>';
+                notifBtn.title = 'Notifications Blocked - Enable in browser settings';
             }
         }
+        
+        // Bind notification button click handler (must be user gesture for iOS)
+        setTimeout(function() {
+            const notifBtn = document.getElementById('notification-permission-btn');
+            if (notifBtn) {
+                notifBtn.addEventListener('click', function() {
+                    if (Notification.permission === 'default') {
+                        requestNotificationPermission();
+                    } else if (Notification.permission === 'denied') {
+                        alert('Notifications are blocked. Please enable them in your browser settings.');
+                    } else {
+                        // Already granted, just show a confirmation
+                        showVisualNotification('Test notification - Push notifications are enabled!');
+                    }
+                });
+            }
+            updateNotificationButton();
+        }, 100);
+        
+        // Don't auto-request on page load - let user click the button (required for iOS)
+        // requestNotificationPermission();
+        
+        // Visual notification fallback (for browsers that don't support Web Notifications)
+        function showVisualNotification(prompt) {
+            const preview = prompt.length > 100 ? prompt.substring(0, 97) + '...' : prompt;
+            // Create toast notification
+            let toast = document.getElementById('notification-toast');
+            if (!toast) {
+                toast = document.createElement('div');
+                toast.id = 'notification-toast';
+                toast.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);background:#0078d4;color:white;padding:12px 20px;border-radius:8px;z-index:10000;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:90%;font-size:14px;display:none;animation:slideIn 0.3s ease;';
+                document.body.appendChild(toast);
+            }
+            toast.textContent = preview;
+            toast.style.display = 'block';
+            // Auto-hide after 5 seconds
+            setTimeout(function() { toast.style.display = 'none'; }, 5000);
+        }
+        
+        function showMobileNotification(prompt) {
+            console.log('[TaskSync] showMobileNotification called with:', prompt.substring(0, 50));
+            
+            // Check if native notifications are available and granted
+            const nativeNotificationsAvailable = ('Notification' in window) && Notification.permission === 'granted';
+            
+            if (nativeNotificationsAvailable) {
+                // Use native notifications
+                var preview = prompt.length > 100 ? prompt.substring(0, 97) + '...' : prompt;
+                try {
+                    console.log('[TaskSync] Showing native browser notification');
+                    var notification = new Notification('TaskSync', {
+                        body: preview,
+                        icon: '/media/TS-logo.svg',
+                        tag: 'tasksync-pending',
+                        requireInteraction: true,
+                        silent: false
+                    });
+                    notification.onclick = function() {
+                        window.focus();
+                        notification.close();
+                    };
+                    setTimeout(function() { notification.close(); }, 30000);
+                } catch (e) {
+                    console.error('[TaskSync] Native notification error, falling back to visual:', e);
+                    showVisualNotification(prompt);
+                }
+            } else {
+                // Fallback to visual toast
+                console.log('[TaskSync] Using visual toast notification (native not available/granted)');
+                showVisualNotification(prompt);
+            }
+        }
+        
+        // Make showMobileNotification globally accessible
         
         // Make showMobileNotification globally accessible
         window.showMobileNotification = showMobileNotification;
@@ -3320,6 +3400,20 @@ self.addEventListener('fetch', event => {
             } catch (e) {}
             if (socket) socket.disconnect();
             window.location.href = '/';
+        });
+        
+        // Settings modal button handler
+        document.getElementById('settings-modal-btn')?.addEventListener('click', () => {
+            if (window.dispatchVSCodeMessage) {
+                window.dispatchVSCodeMessage({ type: 'openSettingsModal' });
+            }
+        });
+        
+        // Prompts modal button handler  
+        document.getElementById('prompts-modal-btn')?.addEventListener('click', () => {
+            if (window.dispatchVSCodeMessage) {
+                window.dispatchVSCodeMessage({ type: 'openPromptsModal' });
+            }
         });
         
         // Theme toggle handler
