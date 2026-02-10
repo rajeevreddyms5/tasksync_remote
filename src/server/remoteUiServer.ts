@@ -2794,9 +2794,9 @@ self.addEventListener('fetch', event => {
             }
             toast.style.cssText = 'position:fixed;top:0;left:0;right:0;background:' + bgColor + ';color:white;padding:12px 16px;z-index:10000;box-shadow:0 2px 12px rgba(0,0,0,0.3);font-size:14px;line-height:1.5;display:block;animation:slideIn 0.3s ease;word-wrap:break-word;white-space:pre-wrap;cursor:pointer;';
             toast.textContent = prompt;
-            // Auto-hide after 8 seconds (longer for instruction text)
+            // Auto-hide after 5 seconds
             clearTimeout(toast._hideTimer);
-            toast._hideTimer = setTimeout(function() { toast.style.display = 'none'; }, 8000);
+            toast._hideTimer = setTimeout(function() { toast.style.display = 'none'; }, 5000);
             // Tap to dismiss
             toast.onclick = function() { toast.style.display = 'none'; clearTimeout(toast._hideTimer); };
         }

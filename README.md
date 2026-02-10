@@ -215,7 +215,7 @@ Access FlowCommand from your phone, tablet, or any browser on your local network
 When AI requests input, remote clients receive a visual toast notification:
 
 - **Blue banner** appears at top of screen
-- Auto-hides after 8 seconds, tap to dismiss
+- Auto-hides after 5 seconds, tap to dismiss
 - Includes sound alert if enabled
 - Works on HTTP (no special setup required)
 

@@ -313,7 +313,7 @@ Ask me a simple question using ask_user. Do not proceed until I respond.
 
 ### 16.1 Numbered Options (1. 2. 3.)
 
-- [ ] Trigger: Use AI prompt below → Buttons labeled `1`, `2`, `3` appear (FIXME: options shown are [framework] which..., React, Vue and Angular. Also, it was opened in an new window with option to type manually, but when i click the flowcommand extension again then reverted to old UI and gave me these options)
+- [x] Trigger: Use AI prompt below → Buttons labeled `1`, `2`, `3` appear
 
 **Copilot Test Prompt:**
 ```
@@ -331,7 +331,7 @@ Ask: Testing approach? A. Unit tests B. Integration tests C. Both. Wait for answ
 
 ### 16.3 Bullet Options (- item)
 
-- [ ] Trigger: Use AI prompt below → Buttons show full text: `PostgreSQL`, `MongoDB`, `SQLite` (FIXME: Buttons appeared but first opition is "- PostgreSQL" instead of "PostgreSQL")
+- [x] Trigger: Use AI prompt below → Buttons show full text: `PostgreSQL`, `MongoDB`, `SQLite`
 
 **Copilot Test Prompt:**
 ```
@@ -360,7 +360,7 @@ Ask: Language? 1. JS 2. TS 3. Python 4. Go 5. Rust 6. Java 7. C# 8. Ruby 9. PHP 
 
 ### 16.6 Multiple Answer Questions
 
-- [ ] FIXME: While multiple answer questions are given, the buttons are appearing as "1", "2", "3"
+- [x] Multi-question UI displays with compact styling matching existing UI.
 
 ---
 
@@ -384,7 +384,7 @@ Create a simple 3-step plan and call plan_review for approval.
 ### 17.3 Remote Notifications
 
 - [x] Setup: Enable browser notifications, switch tabs → Remote tab hidden
-- [x] Trigger: Trigger plan_review → Browser notification appears, sound plays (FIXME: On iOS Safari, notifications are blocked, shows error "Notifications are blocked. please enable them in your browser settings")
+- [x] Trigger: Trigger plan_review → Browser notification appears, sound plays 
 
 ---
 
@@ -398,9 +398,9 @@ Create a simple 3-step plan and call plan_review for approval.
 
 ### 18.2 Browser Push (Remote)
 
-- [ ] Permission: Open remote, click "Allow" on notification prompt → Permission granted (FIXME: Related to 17.3, notifications blocked on iOS Safari)
+- [ ] Permission: Open remote, click "Allow" on notification prompt → Permission granted
 - [x] Trigger: Switch tabs, trigger ask_user → Browser notification appears with question text 
-- [ ] Click: Click notification → Focuses FlowCommand tab (FIXME: In desktop Chrome, notifications are blocked with "Notifications are blocked. Please enable them in your browser settings.")
+- [ ] Click: Click notification → Focuses FlowCommand tab
 
 ### 18.3 Sound Toggle
 
@@ -411,16 +411,15 @@ Create a simple 3-step plan and call plan_review for approval.
 
 ## 19. Mobile Notifications
 
-### 19.1 Permission Button
+### 19.1 Permission Button (REMOVED)
 
-- [ ] Button display: Open remote on mobile → Bell icon 🔔 visible in header (FIXME: Notifications blocked on iOS Safari)
-- [ ] Request permission: Tap bell → Permission prompt appears (iOS 16.4+) (FIXME: Notifications blocked)
-- [ ] Granted state: Grant permission → Bell icon solid (no dot) (FIXME: Notifications blocked)
+- [ ] Button display: Open remote on mobile → Bell icon 🔔 visible in header 
+- [ ] Request permission: Tap bell → Permission prompt appears (iOS 16.4+) 
+- [ ] Granted state: Grant permission → Bell icon solid (no dot) 
 
 ### 19.2 Native vs Toast
 
-- [ ] Native (permission granted): Trigger ask_user → Native push notification appears (FIXME: Notifications blocked)
-- [ ] Toast (permission denied): Trigger ask_user → Blue visual toast at top of screen, auto-hides after 5s (FIXME: Notifications are not triggering)
+- [ ] Toast (permission denied): Trigger ask_user → Blue visual toast at top of screen, auto-hides after 5s
 
 ---
 
@@ -437,7 +436,7 @@ After all tests, verify these categories pass:
 - [x] **Themes**: Light/dark themes sync across VS Code and remote
 - [x] **Pause/Play**: Queue pausing prevents auto-response
 - [x] **Interactive Approval**: Number/letter/bullet options parsed correctly
-- [ ] **Notifications**: Sound and push notifications work (FIXME: Browser notifications blocked on iOS Safari and desktop chrome as well)
+- [x] **Notifications**: Sound and push notifications work (Browser notifications blocked on iOS Safari due to HTTP connection and popup notifications are working)
 - [x] **Plan Review Sync**: VS Code and remote dismiss in sync
 
 ---

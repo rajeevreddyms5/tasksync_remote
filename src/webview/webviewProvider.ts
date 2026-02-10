@@ -547,11 +547,12 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         this._instructionText = config.get<string>('instructionText', '');
 
         // Load reusable prompts from settings
-        const savedPrompts = config.get<Array<{ name: string; prompt: string }>>('reusablePrompts', []);
+        const savedPrompts = config.get<Array<{ name: string; prompt: string; isTemplate?: boolean }>>('reusablePrompts', []);
         this._reusablePrompts = savedPrompts.map((p, index) => ({
             id: `rp_${index}_${Date.now()}`,
             name: p.name,
-            prompt: p.prompt
+            prompt: p.prompt,
+            isTemplate: p.isTemplate || false
         }));
     }
 
@@ -564,7 +565,8 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             const config = vscode.workspace.getConfiguration('flowcommand');
             const promptsToSave = this._reusablePrompts.map(p => ({
                 name: p.name,
-                prompt: p.prompt
+                prompt: p.prompt,
+                isTemplate: p.isTemplate || false
             }));
             await config.update('reusablePrompts', promptsToSave, vscode.ConfigurationTarget.Global);
         } finally {
@@ -2518,8 +2520,11 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         this._setProcessingState(true);
         this._updateCurrentSessionUI();
 
+        // Append template to the response if active
+        const finalValue = this._appendTemplateToPrompt(responseJson);
+
         resolve({
-            value: responseJson,
+            value: finalValue,
             queue: this._queueEnabled,
             attachments: []
         });
@@ -3394,7 +3399,8 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
 
         // Pattern 1d: Inline emoji numbered options "1️⃣ Dark 2️⃣ Light 3️⃣ System"
         // Emoji keycaps: digit + optional variation selector (FE0F) + combining enclosing keycap (20E3)
-        const inlineEmojiPattern = /([0-9])\uFE0F?\u20E3\s+([^0-9\uFE0F\u20E3]+?)(?=\s*[0-9]\uFE0F?\u20E3|[.?!]?\s*$)/g;
+        // Lookahead stops at: another emoji number, OR sentence-ending patterns like ". Wait", ". Please", etc.
+        const inlineEmojiPattern = /([0-9])\uFE0F?\u20E3\s+([^0-9\uFE0F\u20E3]+?)(?=\s*[0-9]\uFE0F?\u20E3|[.!]\s+(?:Wait|wait|Please|please|Then|then|Select|select)|[.?!]\s*$)/g;
         const inlineEmojiMatches: { num: string; text: string }[] = [];
 
         while ((match = inlineEmojiPattern.exec(singleLine)) !== null) {

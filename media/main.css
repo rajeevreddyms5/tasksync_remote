@@ -2980,9 +2980,9 @@ button#send-btn:disabled {
 }
 
 .mq-question-text {
-    font-size: 13px;
-    line-height: 1.5;
-    margin-bottom: 12px;
+    font-size: 11px;
+    line-height: 1.4;
+    margin-bottom: 10px;
 }
 
 .mq-options {
@@ -3014,7 +3014,7 @@ button#send-btn:disabled {
 }
 
 .mq-option-label {
-    font-size: 13px;
+    font-size: 12px;
     display: flex;
     align-items: center;
     gap: 6px;
