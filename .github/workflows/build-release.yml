@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout code
@@ -37,6 +39,20 @@ jobs:
         name: flowcommand-vsix
         path: flowcommand-latest.vsix
         retention-days: 30
+
+    - name: Update latest pre-release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: latest
+        name: Latest Build
+        body: |
+          Automatically updated on every push to main.
+          **Commit:** ${{ github.sha }}
+          **Date:** ${{ github.event.head_commit.timestamp }}
+        prerelease: true
+        files: flowcommand-latest.vsix
+        make_latest: false
 
   release:
     needs: build
