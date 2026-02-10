@@ -6,17 +6,15 @@ All notable changes to FlowCommand will be documented in this file.
 
 ### 🎉 Rebrand to FlowCommand
 
-FlowCommand is a new identity for this extension, built on [4regab/TaskSync](https://github.com/4regab/TaskSync).
-
-**Why the rebrand?** The extension has evolved significantly beyond the original TaskSync with unique features like remote access, plan review panels, mobile notifications, and interactive approval. "FlowCommand" better captures the essence of what the extension does: command your AI workflow.
+Major rebrand and feature overhaul.
 
 ### Added
 - New branding and identity as FlowCommand
 - Improved testing checklist with clear pass/fail criteria
 
 ### Changed
-- All configuration keys updated from `tasksync.*` to `flowcommand.*`
-- All command IDs updated from `tasksync.*` to `flowcommand.*`
+- All configuration keys use `flowcommand.*` namespace
+- All command IDs use `flowcommand.*` namespace
 - View container and view IDs renamed to `flowCommandContainer` and `flowCommandView`
 - Updated README with comprehensive feature documentation
 
@@ -74,6 +72,4 @@ First release with the following features:
 - **Remote Mobile/Web Access** - Control from phone, tablet, or browser
 - **MCP Server Integration** - Works with Kiro, Cursor, Claude Desktop
 
-### Attribution
 
-Built on [4regab/TaskSync](https://github.com/4regab/TaskSync).

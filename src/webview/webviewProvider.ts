@@ -725,8 +725,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
     }
 
     /**
-     * Alias for setBroadcastCallback - matches original TaskSync API
-     * Use this for compatibility with upstream changes
+     * Alias for setBroadcastCallback
      */
     public setRemoteBroadcastCallback(callback: ((message: ToWebviewMessage) => void) | null): void {
         this.setBroadcastCallback(callback);
@@ -922,8 +921,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
     }
 
     /**
-     * Alias for getRemoteState - matches original TaskSync API
-     * Use this for compatibility with upstream changes
+     * Alias for getRemoteState
      */
     public getStateForRemote(): ReturnType<typeof this.getRemoteState> {
         return this.getRemoteState();

@@ -2,9 +2,9 @@
   "name": "flowcommand",
   "publisher": "RAJEEVREDDY",
   "displayName": "FlowCommand",
-  "description": "Command your AI workflow. Queue prompts, review plans, control from phone/browser. Based on TaskSync.",
+  "description": "Command your AI workflow. Queue prompts, review plans, control from phone/browser.",
   "icon": "media/FlowCommand-logo.png",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -42,7 +42,7 @@
         "tags": [
           "confirmation",
           "user-interaction",
-          "tasksync",
+          "flowcommand",
           "required",
           "mandatory"
         ],
@@ -153,7 +153,7 @@
           "plan",
           "review",
           "approval",
-          "tasksync"
+          "flowcommand"
         ],
         "toolReferenceName": "planReview",
         "displayName": "Plan Review",
