@@ -3272,6 +3272,10 @@ self.addEventListener('fetch', event => {
                         // No pending request - clear any stale pending UI
                         window.dispatchVSCodeMessage({ type: 'toolCallCancelled', id: '__stale__' });
                     }
+                    // Sync queued agent request count
+                    if (state.queuedAgentRequestCount !== undefined) {
+                        window.dispatchVSCodeMessage({ type: 'queuedAgentRequestCount', count: state.queuedAgentRequestCount });
+                    }
                 }
             }
 

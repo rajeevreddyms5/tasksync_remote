@@ -54,6 +54,21 @@ export interface ToolCallEntry {
     attachments?: AttachmentInfo[];
 }
 
+// Queued agent request (when multiple agents call ask_user concurrently)
+interface QueuedAgentRequest {
+    type: 'single' | 'multi';
+    // For single question mode
+    question?: string;
+    context?: string;
+    explicitChoices?: ParsedChoice[];
+    // For multi-question mode
+    questions?: Question[];
+    // Promise resolve function
+    resolve: (result: UserResponseResult) => void;
+    toolCallId: string;
+    entry: ToolCallEntry;
+}
+
 // Parsed choice from question
 export interface ParsedChoice {
     label: string;      // Display text (e.g., "1" or "Test functionality")
@@ -91,7 +106,8 @@ type ToWebviewMessage =
     | { type: 'planReviewPending'; reviewId: string; title: string; plan: string }
     | { type: 'planReviewCompleted'; reviewId: string; status: string }
     | { type: 'multiQuestionPending'; requestId: string; questions: Question[] }
-    | { type: 'multiQuestionCompleted'; requestId: string };
+    | { type: 'multiQuestionCompleted'; requestId: string }
+    | { type: 'queuedAgentRequestCount'; count: number };
 
 type FromWebviewMessage =
     | { type: 'submit'; value: string; attachments: AttachmentInfo[] }
@@ -164,6 +180,9 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
     private _currentExplicitChoices: ParsedChoice[] | undefined;
     // Current multi-question state for remote sync
     private _currentMultiQuestions: Question[] | null = null;
+
+    // Queue for concurrent agent requests (when multiple agents call ask_user simultaneously)
+    private _queuedAgentRequests: QueuedAgentRequest[] = [];
 
     // Webview ready state - prevents race condition on first message
     private _webviewReady: boolean = false;
@@ -702,6 +721,12 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         // Clear pending requests (reject any waiting promises)
         this._pendingRequests.clear();
 
+        // Clear queued agent requests
+        for (const queued of this._queuedAgentRequests) {
+            queued.resolve({ value: '[CANCELLED: Extension disposed]', queue: false, attachments: [], cancelled: true });
+        }
+        this._queuedAgentRequests = [];
+
         // Clean up temp images from current session before clearing
         this._cleanupTempImagesFromEntries(this._currentSessionCalls);
 
@@ -782,6 +807,22 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         // (_postMessage handles both local webview and remote broadcast)
         this._postMessage({ type: 'toolCallCancelled' as const, id: toolCallId });
 
+        // Also cancel all queued agent requests
+        for (const queued of this._queuedAgentRequests) {
+            queued.resolve({
+                value: '[CANCELLED: User clicked Stop]',
+                queue: false,
+                attachments: [],
+                cancelled: true
+            });
+            if (queued.entry.status === 'pending') {
+                queued.entry.status = 'cancelled';
+                queued.entry.response = '[Cancelled by user (Stop button)]';
+            }
+        }
+        this._queuedAgentRequests = [];
+        this._broadcastQueuedAgentCount();
+
         // Clear any processing state
         this._setProcessingState(false);
 
@@ -789,6 +830,83 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         this._updateCurrentSessionUI();
 
         console.log(`[FlowCommand] Pending request ${toolCallId} cancelled (Stop button)`);
+    }
+
+    /**
+     * Process the next queued agent request after the current one is resolved.
+     * Shows the next request in the webview/remote UI.
+     */
+    private async _processNextQueuedToolCall(): Promise<void> {
+        if (this._queuedAgentRequests.length === 0) {
+            this._broadcastQueuedAgentCount();
+            return;
+        }
+
+        const next = this._queuedAgentRequests.shift()!;
+        this._broadcastQueuedAgentCount();
+
+        if (next.type === 'multi' && next.questions) {
+            // Multi-question request
+            this._currentToolCallId = next.toolCallId;
+            this._currentMultiQuestions = next.questions;
+            this._pendingRequests.set(next.toolCallId, next.resolve);
+
+            const multiQuestionMessage = {
+                type: 'multiQuestionPending' as const,
+                requestId: next.toolCallId,
+                questions: next.questions
+            };
+
+            if (this._webviewReady && this._view) {
+                this._view.show(this._autoFocusPanelEnabled);
+                this._view.webview.postMessage(multiQuestionMessage);
+                this.playNotificationSound();
+                this._showDesktopNotification('AI has multiple questions for you');
+            }
+            if (this._broadcastCallback) {
+                this._broadcastCallback(multiQuestionMessage);
+            }
+        } else {
+            // Single question request
+            this._currentToolCallId = next.toolCallId;
+            this._currentMultiQuestions = null;
+            this._pendingRequests.set(next.toolCallId, next.resolve);
+
+            const question = next.question || '';
+            const choices = next.explicitChoices || this._parseChoices(question);
+            const isApproval = choices.length === 0 && this._isApprovalQuestion(question);
+            this._currentExplicitChoices = next.explicitChoices;
+
+            const toolCallMessage = {
+                type: 'toolCallPending' as const,
+                id: next.toolCallId,
+                prompt: question,
+                context: next.context,
+                isApprovalQuestion: isApproval,
+                choices: choices.length > 0 ? choices : undefined
+            };
+
+            if (this._webviewReady && this._view) {
+                this._view.show(this._autoFocusPanelEnabled);
+                this._view.webview.postMessage(toolCallMessage);
+                this.playNotificationSound();
+                this._showDesktopNotification(question);
+            }
+            if (this._broadcastCallback) {
+                this._broadcastCallback(toolCallMessage);
+            }
+        }
+
+        this._setProcessingState(false);
+        this._updateCurrentSessionUI();
+        console.log(`[FlowCommand] Showing queued agent request ${next.toolCallId} (${this._queuedAgentRequests.length} remaining)`);
+    }
+
+    /**
+     * Broadcast the current queued agent request count to webview and remote clients
+     */
+    private _broadcastQueuedAgentCount(): void {
+        this._postMessage({ type: 'queuedAgentRequestCount', count: this._queuedAgentRequests.length });
     }
 
     /**
@@ -860,6 +978,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         persistedHistory: ToolCallEntry[];
         pendingRequest: { id: string; prompt: string; context?: string; isApprovalQuestion: boolean; choices?: ParsedChoice[] } | null;
         pendingMultiQuestion: { requestId: string; questions: Question[] } | null;
+        queuedAgentRequestCount: number;
         settings: { 
             soundEnabled: boolean; 
             desktopNotificationEnabled: boolean;
@@ -906,6 +1025,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             persistedHistory: this._persistedHistory,
             pendingRequest,
             pendingMultiQuestion,
+            queuedAgentRequestCount: this._queuedAgentRequests.length,
             settings: {
                 soundEnabled: this._soundEnabled,
                 desktopNotificationEnabled: this._desktopNotificationEnabled,
@@ -1005,33 +1125,40 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             }
         }
 
-        // Race condition prevention: If there's already a pending request, cancel it
-        // This prevents orphaned promises when waitForUserResponse is called multiple times
-        if (this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId)) {
-            const oldToolCallId = this._currentToolCallId;
-            const oldResolve = this._pendingRequests.get(oldToolCallId);
-            if (oldResolve) {
-                // Resolve the orphaned promise with a cancellation indicator
-                oldResolve({
-                    value: '[CANCELLED: New request superseded this one]',
-                    queue: false,
-                    attachments: [],
-                    cancelled: true
-                });
-                this._pendingRequests.delete(oldToolCallId);
+        const toolCallId = `tc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-                // Update the old entry status to indicate it was superseded
-                const oldEntry = this._currentSessionCallsMap.get(oldToolCallId);
-                if (oldEntry && oldEntry.status === 'pending') {
-                    oldEntry.status = 'cancelled';
-                    oldEntry.response = '[Superseded by new request]';
-                    this._updateCurrentSessionUI();
-                }
-                console.warn(`[FlowCommand] Previous request ${oldToolCallId} was superseded by new request`);
-            }
+        // If there's already an active pending request from another agent, queue this one
+        if (this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId)) {
+            // Create pending entry for history tracking
+            const pendingEntry: ToolCallEntry = {
+                id: toolCallId,
+                prompt: question,
+                context: context,
+                response: '',
+                timestamp: Date.now(),
+                isFromQueue: false,
+                status: 'pending'
+            };
+            this._currentSessionCalls.unshift(pendingEntry);
+            this._currentSessionCallsMap.set(toolCallId, pendingEntry);
+            this._trimCurrentSessionCalls();
+            this._updateCurrentSessionUI();
+
+            return new Promise<UserResponseResult>((resolve) => {
+                this._queuedAgentRequests.push({
+                    type: 'single',
+                    question,
+                    context,
+                    explicitChoices,
+                    resolve,
+                    toolCallId,
+                    entry: pendingEntry
+                });
+                this._broadcastQueuedAgentCount();
+                console.log(`[FlowCommand] Queued agent request ${toolCallId} (${this._queuedAgentRequests.length} in queue)`);
+            });
         }
 
-        const toolCallId = `tc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         this._currentToolCallId = toolCallId;
 
         // Check if queue is enabled, not paused, and has prompts - auto-respond
@@ -1203,29 +1330,42 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             }
         }
 
-        // Cancel any existing pending request
+        const requestId = `mq_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const combinedPrompt = safeQuestions.map((q, i) => `${i + 1}. [${q.header}] ${q.question}`).join('\n');
+
+        // If there's already an active pending request, queue this one
         if (this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId)) {
-            const oldResolve = this._pendingRequests.get(this._currentToolCallId);
-            if (oldResolve) {
-                oldResolve({
-                    value: '[CANCELLED: New request superseded this one]',
-                    queue: false,
-                    attachments: [],
-                    cancelled: true
+            const pendingEntry: ToolCallEntry = {
+                id: requestId,
+                prompt: combinedPrompt,
+                response: '',
+                timestamp: Date.now(),
+                isFromQueue: false,
+                status: 'pending'
+            };
+            this._currentSessionCalls.unshift(pendingEntry);
+            this._currentSessionCallsMap.set(requestId, pendingEntry);
+            this._trimCurrentSessionCalls();
+            this._updateCurrentSessionUI();
+
+            return new Promise<UserResponseResult>((resolve) => {
+                this._queuedAgentRequests.push({
+                    type: 'multi',
+                    questions: safeQuestions,
+                    resolve,
+                    toolCallId: requestId,
+                    entry: pendingEntry
                 });
-                this._pendingRequests.delete(this._currentToolCallId);
-            }
+                this._broadcastQueuedAgentCount();
+                console.log(`[FlowCommand] Queued multi-question agent request ${requestId} (${this._queuedAgentRequests.length} in queue)`);
+            });
         }
 
-        const requestId = `mq_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         this._currentToolCallId = requestId;
         // Store questions for remote state sync
         this._currentMultiQuestions = safeQuestions;
 
         this._view.show(this._autoFocusPanelEnabled);
-
-        // Build a combined prompt for display in history
-        const combinedPrompt = safeQuestions.map((q, i) => `${i + 1}. [${q.header}] ${q.question}`).join('\n');
 
         // Add pending entry to current session
         const pendingEntry: ToolCallEntry = {
@@ -1523,6 +1663,9 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 resolve({ value: finalValue, queue: this._queueEnabled, attachments });
                 this._pendingRequests.delete(this._currentToolCallId);
                 this._currentToolCallId = null;
+
+                // Process next queued agent request if any
+                this._processNextQueuedToolCall();
             } else {
                 // No pending tool call - add message to queue for later use
                 if (value && value.trim()) {
@@ -2054,6 +2197,9 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             resolve({ value: finalValue, queue: true, attachments: queuedPrompt.attachments || [] });
             this._pendingRequests.delete(this._currentToolCallId!);
             this._currentToolCallId = null;
+
+            // Process next queued agent request if any
+            this._processNextQueuedToolCall();
         } else {
             // No pending request - add to queue normally
             this._promptQueue.push(queuedPrompt);
@@ -2206,6 +2352,9 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         });
         this._pendingRequests.delete(this._currentToolCallId);
         this._currentToolCallId = null;
+
+        // Process next queued agent request if any
+        this._processNextQueuedToolCall();
     }
 
     /**
@@ -2487,6 +2636,9 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             this._pendingRequests.delete(requestId);
             this._currentToolCallId = null;
             this._currentMultiQuestions = null;
+
+            // Process next queued agent request if any
+            this._processNextQueuedToolCall();
             return;
         }
 
@@ -2537,6 +2689,9 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         this._pendingRequests.delete(requestId);
         this._currentToolCallId = null;
         this._currentMultiQuestions = null;
+
+        // Process next queued agent request if any
+        this._processNextQueuedToolCall();
     }
 
     /**

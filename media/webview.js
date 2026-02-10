@@ -1465,6 +1465,9 @@
             case 'multiQuestionCompleted':
                 closeMultiQuestionModal(message.requestId);
                 break;
+            case 'queuedAgentRequestCount':
+                updateQueuedAgentBadge(message.count || 0);
+                break;
         }
     }
 
@@ -1480,6 +1483,30 @@
         // Also clear any stale pending tool call state
         if (!pendingToolCall) {
             document.body.classList.remove('has-pending-toolcall');
+        }
+    }
+
+    /**
+     * Show/hide the queued agent requests badge.
+     * Displays a small indicator when multiple AI agents are waiting in line.
+     */
+    function updateQueuedAgentBadge(count) {
+        var badge = document.getElementById('queued-agent-badge');
+        if (count > 0) {
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.id = 'queued-agent-badge';
+                badge.className = 'queued-agent-badge';
+                // Insert before the input area
+                var inputArea = document.querySelector('.input-area');
+                if (inputArea) {
+                    inputArea.parentNode.insertBefore(badge, inputArea);
+                }
+            }
+            badge.innerHTML = '<span class="codicon codicon-layers"></span> ' + count + ' more agent request' + (count > 1 ? 's' : '') + ' waiting';
+            badge.style.display = 'flex';
+        } else if (badge) {
+            badge.style.display = 'none';
         }
     }
 
