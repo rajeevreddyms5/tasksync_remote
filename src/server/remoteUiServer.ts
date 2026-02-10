@@ -1382,6 +1382,8 @@ self.addEventListener('fetch', event => {
             --vscode-list-hoverBackground: #2a2d2e;
             --vscode-list-activeSelectionBackground: #094771;
             --vscode-list-activeSelectionForeground: #ffffff;
+            --vscode-panel-border: #2b2b2b;
+            --vscode-toolbar-hoverBackground: rgba(90, 93, 94, 0.31);
             --vscode-scrollbarSlider-background: rgba(121, 121, 121, 0.4);
             --vscode-scrollbarSlider-hoverBackground: rgba(100, 100, 100, 0.7);
             --vscode-scrollbarSlider-activeBackground: rgba(191, 191, 191, 0.4);
@@ -1413,10 +1415,13 @@ self.addEventListener('fetch', event => {
             --vscode-list-hoverBackground: #e8e8e8;
             --vscode-list-activeSelectionBackground: #0060c0;
             --vscode-list-activeSelectionForeground: #ffffff;
+            --vscode-panel-border: #e0e0e0;
+            --vscode-toolbar-hoverBackground: rgba(184, 184, 184, 0.31);
             --vscode-scrollbarSlider-background: rgba(100, 100, 100, 0.4);
             --vscode-scrollbarSlider-hoverBackground: rgba(100, 100, 100, 0.7);
             --vscode-scrollbarSlider-activeBackground: rgba(0, 0, 0, 0.6);
         }`;
+
 
         return `<!DOCTYPE html>
 <html lang="en">

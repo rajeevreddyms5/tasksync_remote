@@ -371,7 +371,7 @@
 
         // === NOTIFICATIONS (Collapsible Group) ===
         var notificationsGroup = document.createElement('div');
-        notificationsGroup.className = 'settings-group';
+        notificationsGroup.className = 'settings-group collapsed';
         notificationsGroup.id = 'notifications-group';
         notificationsGroup.innerHTML = 
             '<div class="settings-group-header" id="notifications-group-toggle">' +
@@ -402,14 +402,16 @@
             '</div>';
         modalContent.appendChild(notificationsGroup);
 
-        // === INSTRUCTION INJECTION (with divider header) ===
-        var instructionSection = document.createElement('div');
-        instructionSection.className = 'settings-section';
-        instructionSection.innerHTML = 
-            '<div class="settings-divider-header">' +
-            '<span class="codicon codicon-symbol-misc"></span>' +
-            '<span class="settings-divider-title">Instruction Injection</span>' +
+        // === INSTRUCTION INJECTION (Collapsible Group) ===
+        var instructionGroup = document.createElement('div');
+        instructionGroup.className = 'settings-group collapsed';
+        instructionGroup.id = 'instruction-group';
+        instructionGroup.innerHTML = 
+            '<div class="settings-group-header" id="instruction-group-toggle">' +
+            '<span class="codicon codicon-chevron-down settings-group-chevron"></span>' +
+            '<span class="settings-group-title">Instruction Injection</span>' +
             '</div>' +
+            '<div class="settings-group-content">' +
             '<div class="settings-section-description">Injects FlowCommand instructions into Copilot so it always calls ask_user and plan_review. Injection is applied at <strong>workspace level</strong> — it only affects this workspace. Choose a method and click Inject.</div>' +
             '<div class="form-row" style="margin-top:8px;">' +
             '<label class="form-label" for="instruction-injection-select">Method</label>' +
@@ -431,17 +433,20 @@
             '<div class="form-actions" style="margin-top:6px;">' +
             '<button class="form-btn form-btn-cancel" id="instruction-reset-btn" title="Reset to default instructions">Reset Default</button>' +
             '<button class="form-btn form-btn-save" id="instruction-text-save-btn">Save Instructions</button>' +
-            '</div>';
-        modalContent.appendChild(instructionSection);
-
-        // === MCP SERVER (with divider header) ===
-        var mcpSection = document.createElement('div');
-        mcpSection.className = 'settings-section';
-        mcpSection.innerHTML = 
-            '<div class="settings-divider-header">' +
-            '<span class="codicon codicon-plug"></span>' +
-            '<span class="settings-divider-title">MCP Server</span>' +
             '</div>' +
+            '</div>';
+        modalContent.appendChild(instructionGroup);
+
+        // === MCP SERVER (Collapsible Group) ===
+        var mcpGroup = document.createElement('div');
+        mcpGroup.className = 'settings-group collapsed';
+        mcpGroup.id = 'mcp-group';
+        mcpGroup.innerHTML = 
+            '<div class="settings-group-header" id="mcp-group-toggle">' +
+            '<span class="codicon codicon-chevron-down settings-group-chevron"></span>' +
+            '<span class="settings-group-title">MCP Server</span>' +
+            '</div>' +
+            '<div class="settings-group-content">' +
             '<div class="settings-section-description">Advanced: Control the local MCP server used by external tools. The URL is used for client configuration.</div>' +
             '<div class="form-row" style="margin-top:8px;">' +
             '<label class="form-label">Status</label>' +
@@ -454,8 +459,9 @@
             '<div class="form-actions" style="margin-top:6px;">' +
             '<button class="form-btn form-btn-save" id="mcp-toggle-btn">Start</button>' +
             '<button class="form-btn form-btn-cancel" id="mcp-copy-btn">Copy URL</button>' +
+            '</div>' +
             '</div>';
-        modalContent.appendChild(mcpSection);
+        modalContent.appendChild(mcpGroup);
 
         // Assemble modal
         settingsModal.appendChild(modalHeader);
@@ -711,6 +717,28 @@
         if (notificationsGroupToggle) {
             notificationsGroupToggle.addEventListener('click', function() {
                 var group = document.getElementById('notifications-group');
+                if (group) {
+                    group.classList.toggle('collapsed');
+                }
+            });
+        }
+
+        // Instruction Injection group collapsible toggle
+        var instructionGroupToggle = document.getElementById('instruction-group-toggle');
+        if (instructionGroupToggle) {
+            instructionGroupToggle.addEventListener('click', function() {
+                var group = document.getElementById('instruction-group');
+                if (group) {
+                    group.classList.toggle('collapsed');
+                }
+            });
+        }
+
+        // MCP Server group collapsible toggle
+        var mcpGroupToggle = document.getElementById('mcp-group-toggle');
+        if (mcpGroupToggle) {
+            mcpGroupToggle.addEventListener('click', function() {
+                var group = document.getElementById('mcp-group');
                 if (group) {
                     group.classList.toggle('collapsed');
                 }
