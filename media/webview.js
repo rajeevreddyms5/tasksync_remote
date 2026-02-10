@@ -1515,10 +1515,14 @@
 
     /**
      * Show/hide the pending input count badge at the top of the chat.
-     * Displays a small indicator showing how many inputs are waiting for the user.
-     * Synced with the VS Code sidebar badge count.
+     * Only shown in remote UI mode — the VS Code sidebar uses the native view.badge instead.
      */
     function updatePendingInputBadge(count) {
+        // Skip in VS Code sidebar — the native sidebar badge is sufficient
+        // Only show in remote UI (browser/PWA) where there's no native badge
+        if (typeof acquireVsCodeApi === 'function' && !window.__isRemoteMode) {
+            return;
+        }
         var badge = document.getElementById('pending-input-badge');
         if (count > 0) {
             if (!badge) {

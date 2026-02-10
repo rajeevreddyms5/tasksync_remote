@@ -14,7 +14,17 @@ All notable changes to FlowCommand will be documented in this file.
   - ⛔ Stop-sign prefix in tool descriptions (package.json + MCP server)
   - Rule 4: main agent injects restriction in every `runSubagent` prompt
 
+### Changed
+- **Remote UI: Notification bell → Pending input badge** — replaced notification permission bell (which showed unhelpful PWA instructions) with a pending input count badge in the remote header
+  - Dimmed bell icon when no pending inputs, highlighted bell-dot with numeric count when AI is waiting
+  - Removed ~100 lines of unused notification permission code (HTTP can't access browser notifications)
+  - Added `__isRemoteMode` flag for feature gating between IDE and remote contexts
+- **In-content badge skipped in VS Code sidebar** — native `view.badge` is sufficient; the in-content "N pending inputs" div now only renders in remote UI
+
 ### Fixed
+- **Badge not resetting after answering** — fixed two defensive edge cases where `_currentToolCallId` could remain set after the resolve callback was missing, causing the sidebar badge to stay stuck
+- **Multi-question badge cleanup** — `_handleMultiQuestionResponse` early return now clears badge state when requestId matches but resolve is gone
+- **Cancel cleanup** — `cancelPendingRequest` now also clears `_currentMultiQuestions` for complete state teardown
 - Em-dash encoding corruption in package.json tool descriptions
 
 ---

@@ -1678,10 +1678,36 @@ self.addEventListener('fetch', event => {
             cursor: pointer;
             padding: 4px;
             border-radius: 4px;
+            position: relative;
         }
         
         .remote-header-btn:hover {
             background: #3c3c3c;
+        }
+
+        .remote-header-btn.dimmed {
+            opacity: 0.4;
+        }
+
+        .remote-header-btn.has-badge {
+            opacity: 1;
+            color: #ffc107;
+        }
+
+        .remote-badge-count {
+            position: absolute;
+            top: -2px;
+            right: -4px;
+            background: #007acc;
+            color: #fff;
+            border-radius: 50%;
+            font-size: 9px;
+            font-weight: 700;
+            min-width: 14px;
+            height: 14px;
+            line-height: 14px;
+            text-align: center;
+            padding: 0 3px;
         }
         
         /* Tab Navigation */
@@ -2293,6 +2319,9 @@ self.addEventListener('fetch', event => {
         body.light-theme .remote-header-btn:hover {
             background: #e0e0e0;
         }
+        body.light-theme .remote-header-btn.has-badge {
+            color: #e69500;
+        }
         body.light-theme .remote-tabs {
             background: #f3f3f3;
             border-color: #e0e0e0;
@@ -2579,8 +2608,9 @@ self.addEventListener('fetch', event => {
             <button class="remote-header-btn" id="theme-toggle-btn" title="Toggle Theme">
                 <span class="codicon codicon-symbol-color"></span>
             </button>
-            <button class="remote-header-btn" id="notification-permission-btn" title="Enable Notifications" style="display:none;">
-                <span class="codicon codicon-bell-dot"></span>
+            <button class="remote-header-btn remote-pending-badge dimmed" id="remote-pending-badge-btn" title="No pending inputs">
+                <span class="codicon codicon-bell"></span>
+                <span class="remote-badge-count" id="remote-badge-count" style="display:none;"></span>
             </button>
             <button class="remote-header-btn" id="remote-logout-btn" title="Logout">
                 <span class="codicon codicon-sign-out"></span>
@@ -2860,6 +2890,9 @@ self.addEventListener('fetch', event => {
         // Mock VS Code API state
         let vscodeState = {};
         
+        // Flag to identify remote mode (used by webview.js to skip IDE-only features)
+        window.__isRemoteMode = true;
+        
         // Message queue for when socket is not ready
         const messageQueue = [];
         
@@ -2896,127 +2929,33 @@ self.addEventListener('fetch', event => {
         // Remote users explicitly want notifications since they're using the web interface
         window.mobileNotificationEnabled = true;
         
-        function isIOSSafari() {
-            var ua = navigator.userAgent || '';
-            var isIOS = /iPad|iPhone|iPod/.test(ua);
-            var isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS/.test(ua);
-            return isIOS && isSafari;
-        }
-
-        function isStandaloneMode() {
-            return (window.navigator.standalone === true) || window.matchMedia('(display-mode: standalone)').matches;
-        }
-
-        function getIosNotificationHelp() {
-            if (isStandaloneMode()) {
-                return 'You are in PWA mode but notifications may still be blocked. Try: Settings → Safari → Advanced → Experimental Features → Push API (enable). Then reload this page.';
-            }
-            return 'To enable notifications on iOS: 1) Tap the Share button, 2) Select "Add to Home Screen", 3) Open from the Home Screen icon, 4) Tap the bell button.';
-        }
-
-        function getDesktopNotificationHelp() {
-            return 'Notifications blocked. Click the lock/info icon in the URL bar → Site Settings → Notifications → Allow. Then reload.';
-        }
-
-        function requestNotificationPermission() {
-            if ('Notification' in window && Notification.permission === 'default') {
-                Notification.requestPermission().then(function(permission) {
-                    console.log('[FlowCommand] Notification permission:', permission);
-                    updateNotificationButton();
-                    // Show immediate feedback
-                    if (permission === 'granted') {
-                        showVisualNotification('Notifications enabled! You will receive alerts when Copilot asks questions.');
-                    } else if (permission === 'denied') {
-                        // Don't show error - user explicitly denied, they know
-                        console.log('[FlowCommand] User denied notification permission');
-                    }
-                }).catch(function(err) {
-                    console.error('[FlowCommand] Notification permission request failed:', err);
-                    // Silently fall back to visual notifications
-                });
-            }
-        }
+        // Pending input badge in remote header — replaces notification permission bell
+        window.__pendingInputCount = 0;
         
-        // Update notification button visibility based on permission state
-        function updateNotificationButton() {
-            const notifBtn = document.getElementById('notification-permission-btn');
-            if (!notifBtn) return;
+        function updateRemotePendingBadge(count) {
+            window.__pendingInputCount = count;
+            var btn = document.getElementById('remote-pending-badge-btn');
+            var badge = document.getElementById('remote-badge-count');
+            if (!btn || !badge) return;
             
-            if (!('Notification' in window)) {
-                // Browser doesn't support notifications - hide button
-                notifBtn.style.display = 'none';
-                return;
-            }
-            
-            if (Notification.permission === 'default') {
-                // Permission not yet requested - show button with bell-dot
-                notifBtn.style.display = 'flex';
-                notifBtn.innerHTML = '<span class="codicon codicon-bell-dot"></span>';
-                if (isIOSSafari() && !isStandaloneMode()) {
-                    notifBtn.title = 'iOS Safari requires Add to Home Screen for notifications';
-                } else {
-                    notifBtn.title = 'Enable Push Notifications';
-                }
-            } else if (Notification.permission === 'granted') {
-                // Permission granted - show bell (solid)
-                notifBtn.style.display = 'flex';
-                notifBtn.innerHTML = '<span class="codicon codicon-bell"></span>';
-                notifBtn.title = 'Notifications Enabled';
+            if (count > 0) {
+                btn.classList.remove('dimmed');
+                btn.classList.add('has-badge');
+                btn.title = count + ' pending input' + (count > 1 ? 's' : '') + ' — AI is waiting for your response';
+                badge.textContent = String(count);
+                badge.style.display = '';
+                btn.querySelector('.codicon').className = 'codicon codicon-bell-dot';
             } else {
-                // Permission denied - show bell-slash
-                notifBtn.style.display = 'flex';
-                notifBtn.innerHTML = '<span class="codicon codicon-bell-slash"></span>';
-                if (isIOSSafari()) {
-                    notifBtn.title = 'iOS Safari notifications require Home Screen install';
-                } else {
-                    notifBtn.title = 'Notifications Blocked - Enable in browser settings';
-                }
+                btn.classList.add('dimmed');
+                btn.classList.remove('has-badge');
+                btn.title = 'No pending inputs';
+                badge.style.display = 'none';
+                btn.querySelector('.codicon').className = 'codicon codicon-bell';
             }
         }
         
-        // Bind notification button click handler (must be user gesture for iOS)
-        setTimeout(function() {
-            const notifBtn = document.getElementById('notification-permission-btn');
-            if (notifBtn) {
-                notifBtn.addEventListener('click', function() {
-                    if (!('Notification' in window)) {
-                        showVisualNotification('Push notifications not supported. Visual alerts will be used instead.');
-                        return;
-                    }
-                    if (Notification.permission === 'default') {
-                        if (isIOSSafari() && !isStandaloneMode()) {
-                            var iosHelp = getIosNotificationHelp();
-                            showVisualNotification(iosHelp);
-                            return;
-                        }
-                        requestNotificationPermission();
-                    } else if (Notification.permission === 'denied') {
-                        // Show helpful guidance instead of generic error
-                        if (isIOSSafari()) {
-                            var help = getIosNotificationHelp();
-                            showVisualNotification(help);
-                        } else {
-                            var desktopHelp = getDesktopNotificationHelp();
-                            showVisualNotification(desktopHelp);
-                        }
-                    } else {
-                        // Already granted - show test notification
-                        try {
-                            new Notification('FlowCommand Test', {
-                                body: 'Notifications are working!',
-                                icon: '/media/FC-logo.svg'
-                            });
-                        } catch (e) {
-                            showVisualNotification('Native notifications failed, using visual alerts.');
-                        }
-                    }
-                });
-            }
-            updateNotificationButton();
-        }, 100);
-        
-        // Don't auto-request on page load - let user click the button (required for iOS)
-        // requestNotificationPermission();
+        // Expose for use by the dispatchVSCodeMessage handler
+        window.updateRemotePendingBadge = updateRemotePendingBadge;
         
         // Visual notification fallback (for browsers that don't support Web Notifications)
         function showVisualNotification(prompt, color) {
@@ -3072,8 +3011,6 @@ self.addEventListener('fetch', event => {
                 showVisualNotification(prompt);
             }
         }
-        
-        // Make showMobileNotification globally accessible
         
         // Make showMobileNotification globally accessible
         window.showMobileNotification = showMobileNotification;
@@ -3247,10 +3184,6 @@ self.addEventListener('fetch', event => {
                         if (state.settings.mobileNotificationEnabled === false) {
                             window.mobileNotificationEnabled = false;
                         }
-                        // Request permission if enabled (or still at default true)
-                        if (window.mobileNotificationEnabled) {
-                            requestNotificationPermission();
-                        }
                     }
                     if (state.pendingRequest) {
                         window.dispatchVSCodeMessage({
@@ -3279,6 +3212,10 @@ self.addEventListener('fetch', event => {
                     // Sync pending input count badge
                     if (state.pendingInputCount !== undefined) {
                         window.dispatchVSCodeMessage({ type: 'pendingInputCount', count: state.pendingInputCount });
+                        // Also update remote header badge
+                        if (window.updateRemotePendingBadge) {
+                            window.updateRemotePendingBadge(state.pendingInputCount);
+                        }
                     }
                 }
             }
@@ -3324,9 +3261,10 @@ self.addEventListener('fetch', event => {
                 // Sync mobile notification flag when settings change
                 if (message.type === 'updateSettings') {
                     window.mobileNotificationEnabled = message.mobileNotificationEnabled === true;
-                    if (window.mobileNotificationEnabled) {
-                        requestNotificationPermission();
-                    }
+                }
+                // Update remote header pending badge on pendingInputCount
+                if (message.type === 'pendingInputCount' && window.updateRemotePendingBadge) {
+                    window.updateRemotePendingBadge(message.count || 0);
                 }
             });
             

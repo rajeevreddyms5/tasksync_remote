@@ -865,8 +865,9 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             this._pendingRequests.delete(toolCallId);
         }
 
-        // Clear current tool call ID
+        // Clear current tool call ID and multi-question state
         this._currentToolCallId = null;
+        this._currentMultiQuestions = null;
         this._updateBadge();
 
         // Notify webview + remote clients to dismiss the pending UI
@@ -1752,7 +1753,13 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 // Process next queued agent request if any
                 this._processNextQueuedToolCall();
             } else {
-                // No pending tool call - add message to queue for later use
+                // Resolve not found despite _currentToolCallId being set — stale state.
+                // Clear the stale tool call ID and update badge to prevent it from getting stuck.
+                console.warn(`[FlowCommand] _handleSubmit: resolve not found for ${this._currentToolCallId}, clearing stale state`);
+                this._currentToolCallId = null;
+                this._updateBadge();
+
+                // Add message to queue for later use
                 if (value && value.trim()) {
                     const queuedPrompt: QueuedPrompt = {
                         id: `q_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
@@ -2689,6 +2696,12 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         const resolve = this._pendingRequests.get(requestId);
         if (!resolve) {
             console.warn('[FlowCommand] No pending request for multi-question response:', requestId);
+            // Clear stale state to prevent badge from getting stuck
+            if (this._currentToolCallId === requestId) {
+                this._currentToolCallId = null;
+                this._currentMultiQuestions = null;
+                this._updateBadge();
+            }
             return;
         }
 
@@ -3649,6 +3662,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         // Pattern 1d: Inline emoji numbered options "1️⃣ Dark 2️⃣ Light 3️⃣ System"
         // Emoji keycaps: digit + optional variation selector (FE0F) + combining enclosing keycap (20E3)
         // Lookahead stops at: another emoji number, OR sentence-ending patterns like ". Wait", ". Please", etc.
+        // eslint-disable-next-line no-misleading-character-class
         const inlineEmojiPattern = /([0-9])\uFE0F?\u20E3\s+([^0-9\uFE0F\u20E3]+?)(?=\s*[0-9]\uFE0F?\u20E3|[.!]\s+(?:Wait|wait|Please|please|Then|then|Select|select)|[.?!]\s*$)/g;
         const inlineEmojiMatches: { num: string; text: string }[] = [];
 
