@@ -101,18 +101,15 @@ Save frequently used prompts:
 - `npm run compile` - Type-check with TypeScript
 - `npm run watch` - Watch mode for development
 - `npm run lint` - Run ESLint
+- `npm run package` - Create VSIX package for distribution
 
 ### Publishing
 To create a publishable VSIX package:
-1. Install VS Code Extension CLI:
-   ```bash
-   npm install -g @vscode/vsce
-   ```
+```bash
+npm run package
+```
 
-2. Package the extension:
-   ```bash
-   vsce package
-   ```
+> ⚠️ **Important**: Never use `--no-dependencies` when packaging. The extension requires runtime dependencies (express, socket.io, etc.) to be bundled. Using `--no-dependencies` will create a broken extension that fails at runtime.
 
 ---
 
