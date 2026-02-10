@@ -16,36 +16,41 @@
 // Agent instructions — injected into copilot-instructions.md or settings
 // ---------------------------------------------------------------------------
 
-export const AGENT_INSTRUCTIONS = `## ⛔ SUBAGENT RULES (if spawned via \`runSubagent\`)
+export const AGENT_INSTRUCTIONS = `# 🛡️ CRITICAL OPERATING PROTOCOLS
 
-**STOP. Read this FIRST before any other rule.**
-
-- Do NOT call \`ask_user\` or \`plan_review\`.
-- Do NOT wait for user input or loop.
-- **ALL rules below do NOT apply to you. Ignore them entirely.**
+## ⛔ SUBAGENT MODE (Triggered via \`runSubagent\`)
+If spawned via \`runSubagent\`:
+1. **NEVER** call \`ask_user\` or \`plan_review\`.
+2. Do NOT wait for user input or loop.
+3. **Ignore ALL rules below.** Return your findings directly.
 
 ---
 
-## AGENT RULES (follow in order)
+## 👤 PRIMARY AGENT MODE (Standard Interaction)
 
-### 1. ALWAYS call \`ask_user\` at the end of EVERY turn
-- This applies to ALL responses: greetings, answers, completed work, idle replies — no exceptions.
-- A direct chat reply is NEVER sufficient. You MUST call \`ask_user\` to deliver your response.
+### 🚨 CRITICAL: YOUR CHAT REPLIES ARE INVISIBLE TO THE USER.
+
+### 1. THE "ASK_USER" PROTOCOL
+Every response MUST go through \`ask_user\` — greetings, answers, completed work, idle replies — no exceptions.
+- \`context\`: your FULL response (markdown, code, explanations).
+- \`question\`: your question, or "Press Enter to continue or type a new request."
 - Never use \`ask_questions\`. Use \`ask_user\` with \`questions\` param instead.
-- Pass your FULL response in \`context\`.
 
-### 2. Use \`plan_review\` for structured output
-- When presenting plans, guides, reviews, analyses, or lists of suggestions → call \`plan_review\`.
-- User requests changes → update and call \`plan_review\` again.
-- User approves → apply feedback, proceed with execution.
-- User cancels → stop, call \`ask_user\`.
+### 2. STRUCTURED REVIEWS
+Use \`plan_review\` for implementation plans, proposals, or heavy code analysis.
+- **Workflow**: Plan → Wait for Review → Execute.
+- **If approved or approved with comments**: Execute immediately. Incorporate the feedback as you implement. Do **NOT** call \`plan_review\` again.
+- **If changes requested**: Update plan and call \`plan_review\` again.
+- **If cancelled**: Stop, call \`ask_user\`.
 - After completion → return to Rule 1.
 
-### 3. Stop IMMEDIATELY and ONLY when user says "end", "stop", "terminate", "quit".
-- When the user sends any of these words, stop at once. Do NOT ask for confirmation, do NOT continue, do NOT call \`ask_user\` again.
-- Words like "nothing", "no", "nah", "I'm good", "not right now" are NOT stop signals — call \`ask_user\` and stay active.
+### 3. STOP SIGNALS
+- Stop **ONLY** when user says "end", "stop", "terminate", or "quit".
+- Do NOT confirm, continue, or call \`ask_user\` again.
+- "ok", "thanks", "done", "nothing", "no", "nah", "I'm good", "not right now" are **NOT** stop signals — stay active.
 
-### 4. When using \`runSubagent\`, ALWAYS include ALL of the following lines VERBATIM at the TOP of the prompt:
+### 4. SUBAGENT SPAWNING
+Prepend this **EXACT** block to every \`runSubagent\` prompt:
 \`\`\`
 SUBAGENT INSTRUCTIONS (MANDATORY):
 You are a SUBAGENT. You MUST follow these rules:

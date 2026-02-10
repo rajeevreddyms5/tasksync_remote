@@ -187,7 +187,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
 
     // Webview ready state - prevents race condition on first message
     private _webviewReady: boolean = false;
-    private _pendingToolCallMessage: { id: string; prompt: string; explicitChoices?: ParsedChoice[] } | null = null;
+    private _pendingToolCallMessage: { id: string; prompt: string; context?: string; explicitChoices?: ParsedChoice[] } | null = null;
 
     // Debounce timer for queue persistence
     private _queueSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -544,31 +544,56 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
      * (e.g., user answers from remote browser while sidebar is collapsed).
      */
     private _updateBadge(): void {
-        const askUserCount = this._currentToolCallId ? 1 : 0;
+        // Use robust check: _currentToolCallId must ALSO have a live entry in _pendingRequests.
+        // This prevents stale/orphaned tool call IDs from keeping the badge stuck.
+        const askUserCount = (this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId)) ? 1 : 0;
         const queuedCount = this._queuedAgentRequests.length;
         const total = askUserCount + queuedCount + this._pendingPlanReviewCount;
 
+        // Defensive: if _currentToolCallId is set but has no pending request, clear the stale ID
+        if (this._currentToolCallId && !this._pendingRequests.has(this._currentToolCallId)) {
+            console.warn(`[FlowCommand] _updateBadge: clearing stale _currentToolCallId ${this._currentToolCallId} (no pending request)`);
+            this._currentToolCallId = null;
+            this._currentMultiQuestions = null;
+        }
+
         // 1. Try to set the native VS Code sidebar badge.
+        //    Prefer the primary view; fall back to _viewForBadge only if _view is gone.
         //    Isolated in its own try/catch so a failure (e.g. stale disposed view)
         //    never prevents the broadcast below from executing.
-        const view = this._view || this._viewForBadge;
-        if (view) {
+        if (this._view) {
             try {
                 if (total > 0) {
-                    view.badge = {
+                    this._view.badge = {
                         value: total,
                         tooltip: `${total} pending input${total > 1 ? 's' : ''} — AI is waiting for your response`
                     };
                 } else {
-                    view.badge = undefined;
+                    this._view.badge = undefined;
                 }
             } catch {
-                // Badge API failure on a stale/disposed view reference — ignore.
-                // When the sidebar re-opens, resolveWebviewView will sync the badge.
-                // Clear the stale fallback so we don't keep hitting this error.
-                if (view === this._viewForBadge) {
-                    this._viewForBadge = undefined;
+                // Badge API failure — the view may have become stale.
+            }
+        } else if (this._viewForBadge) {
+            // Fallback: sidebar is disposed/collapsed, try the cached reference.
+            try {
+                if (total > 0) {
+                    this._viewForBadge.badge = {
+                        value: total,
+                        tooltip: `${total} pending input${total > 1 ? 's' : ''} — AI is waiting for your response`
+                    };
+                } else {
+                    this._viewForBadge.badge = undefined;
                 }
+            } catch {
+                // Disposed view — clear the stale fallback so we stop trying.
+                this._viewForBadge = undefined;
+            }
+            // If total is 0 and we're writing to a disposed/stale fallback,
+            // the badge may silently NOT clear on the actual sidebar icon.
+            // Clear the fallback so resolveWebviewView can do a clean sync.
+            if (total === 0) {
+                this._viewForBadge = undefined;
             }
         }
 
@@ -1113,7 +1138,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             pendingRequest,
             pendingMultiQuestion,
             queuedAgentRequestCount: this._queuedAgentRequests.length,
-            pendingInputCount: (this._currentToolCallId ? 1 : 0) + this._queuedAgentRequests.length + this._pendingPlanReviewCount,
+            pendingInputCount: ((this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId)) ? 1 : 0) + this._queuedAgentRequests.length + this._pendingPlanReviewCount,
             settings: {
                 soundEnabled: this._soundEnabled,
                 desktopNotificationEnabled: this._desktopNotificationEnabled,
@@ -1187,11 +1212,20 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             this.saveCurrentSessionToHistory();
         }, null, this._disposables);
 
-        // Save history when webview visibility changes (backup for reload)
+        // Handle webview visibility changes
         webviewView.onDidChangeVisibility(() => {
             if (!webviewView.visible) {
+                // WebviewView destroys JS context when hidden — mark as not ready
+                // so messages aren't silently lost, and re-send state on restore
+                this._webviewReady = false;
                 // Save current session when switching away
                 this.saveCurrentSessionToHistory();
+            } else {
+                // Re-sync badge state when panel becomes visible again.
+                // This ensures the VS Code sidebar icon badge is correct even if
+                // the state changed while the panel was hidden (e.g., user answered
+                // from remote browser, or the AI turn ended while panel was hidden).
+                this._updateBadge();
             }
         }, null, this._disposables);
 
@@ -1366,7 +1400,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             this._showDesktopNotification(question);
         } else {
             // Fallback: queue the message for when webview becomes ready
-            this._pendingToolCallMessage = { id: toolCallId, prompt: question, explicitChoices: choices.length > 0 && explicitChoices ? choices : undefined };
+            this._pendingToolCallMessage = { id: toolCallId, prompt: question, context: context, explicitChoices: choices.length > 0 && explicitChoices ? choices : undefined };
         }
         
         // Always broadcast to remote clients (regardless of local webview state)
@@ -1687,6 +1721,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 type: 'toolCallPending',
                 id: this._pendingToolCallMessage.id,
                 prompt: prompt,
+                context: this._pendingToolCallMessage.context,
                 isApprovalQuestion: isApproval,
                 choices: choices.length > 0 ? choices : undefined
             });
@@ -1695,19 +1730,29 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         // If there's an active pending request (webview was hidden/recreated while waiting),
         // re-send the pending tool call message so the user sees the question again
         else if (this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId)) {
-            // Find the pending entry to get the prompt
-            const pendingEntry = this._currentSessionCallsMap.get(this._currentToolCallId);
-            if (pendingEntry && pendingEntry.status === 'pending') {
-                const prompt = pendingEntry.prompt;
-                const choices = this._currentExplicitChoices || this._parseChoices(prompt);
-                const isApproval = choices.length === 0 && this._isApprovalQuestion(prompt);
+            // Check if multi-question form was active
+            if (this._currentMultiQuestions) {
                 this._postMessage({
-                    type: 'toolCallPending',
-                    id: this._currentToolCallId,
-                    prompt: prompt,
-                    isApprovalQuestion: isApproval,
-                    choices: choices.length > 0 ? choices : undefined
+                    type: 'multiQuestionPending',
+                    requestId: this._currentToolCallId,
+                    questions: this._currentMultiQuestions
                 });
+            } else {
+                // Find the pending entry to get the prompt and context
+                const pendingEntry = this._currentSessionCallsMap.get(this._currentToolCallId);
+                if (pendingEntry && pendingEntry.status === 'pending') {
+                    const prompt = pendingEntry.prompt;
+                    const choices = this._currentExplicitChoices || this._parseChoices(prompt);
+                    const isApproval = choices.length === 0 && this._isApprovalQuestion(prompt);
+                    this._postMessage({
+                        type: 'toolCallPending',
+                        id: this._currentToolCallId,
+                        prompt: prompt,
+                        context: pendingEntry.context,
+                        isApprovalQuestion: isApproval,
+                        choices: choices.length > 0 ? choices : undefined
+                    });
+                }
             }
         }
 
