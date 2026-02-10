@@ -1575,6 +1575,11 @@
         // Auto-scroll to show the new pending message
         scrollToBottom();
 
+        // Always clear both choice/approval UI before showing new state
+        // This prevents stale buttons from a previous tool call persisting
+        hideApprovalModal();
+        hideChoicesBar();
+
         // Show choice buttons if we have choices, otherwise show approval modal for yes/no questions
         // Only show if interactive approval is enabled
         if (interactiveApprovalEnabled) {
@@ -1582,17 +1587,12 @@
                 showChoicesBar();
             } else if (isApprovalQuestion) {
                 showApprovalModal();
-            } else {
-                hideApprovalModal();
-                hideChoicesBar();
             }
-        } else {
-            // Interactive approval disabled - just focus input for manual typing
-            hideApprovalModal();
-            hideChoicesBar();
-            if (chatInput) {
-                chatInput.focus();
-            }
+        }
+
+        // Focus input for typing
+        if (chatInput) {
+            chatInput.focus();
         }
     }
 
