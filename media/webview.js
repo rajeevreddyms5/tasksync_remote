@@ -1365,6 +1365,20 @@
             case 'toolCallCancelled':
                 handleToolCallCancelled(message.id);
                 break;
+            case 'refreshPendingUI':
+                // Re-render choice/approval buttons after visibility change.
+                // Handles the case where JS context was preserved but UI was
+                // lost during a sidebar panel switch.
+                if (pendingToolCall && interactiveApprovalEnabled) {
+                    hideApprovalModal();
+                    hideChoicesBar();
+                    if (currentChoices.length > 0) {
+                        showChoicesBar();
+                    } else if (isApprovalQuestion) {
+                        showApprovalModal();
+                    }
+                }
+                break;
             case 'updateCurrentSession':
                 currentSessionCalls = message.history || [];
                 renderCurrentSession();

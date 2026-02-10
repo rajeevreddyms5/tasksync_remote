@@ -108,7 +108,8 @@ type ToWebviewMessage =
     | { type: 'multiQuestionPending'; requestId: string; questions: Question[] }
     | { type: 'multiQuestionCompleted'; requestId: string }
     | { type: 'queuedAgentRequestCount'; count: number }
-    | { type: 'pendingInputCount'; count: number };
+    | { type: 'pendingInputCount'; count: number }
+    | { type: 'refreshPendingUI' };
 
 type FromWebviewMessage =
     | { type: 'submit'; value: string; attachments: AttachmentInfo[] }
@@ -549,6 +550,8 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         const askUserCount = (this._currentToolCallId && this._pendingRequests.has(this._currentToolCallId)) ? 1 : 0;
         const queuedCount = this._queuedAgentRequests.length;
         const total = askUserCount + queuedCount + this._pendingPlanReviewCount;
+
+        console.log(`[FlowCommand] _updateBadge: askUser=${askUserCount}, queued=${queuedCount}, planReview=${this._pendingPlanReviewCount}, total=${total}, toolCallId=${this._currentToolCallId}, pendingReqSize=${this._pendingRequests.size}`);
 
         // Defensive: if _currentToolCallId is set but has no pending request, clear the stale ID
         if (this._currentToolCallId && !this._pendingRequests.has(this._currentToolCallId)) {
@@ -1181,6 +1184,11 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         this._viewForBadge = undefined; // Primary view is available, no fallback needed
         this._webviewReady = false; // Reset ready state when view is resolved
 
+        // Force clear any stale badge on the fresh view before normal logic.
+        // The previous view reference may have failed to clear its badge silently
+        // (try/catch swallows errors on disposed views), leaving it visually stuck.
+        try { webviewView.badge = undefined; } catch { /* ignore */ }
+
         // Immediately sync badge state when view is (re-)resolved
         // This clears stale badges from previous sessions or when the view was disposed
         this._updateBadge();
@@ -1226,6 +1234,11 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 // the state changed while the panel was hidden (e.g., user answered
                 // from remote browser, or the AI turn ended while panel was hidden).
                 this._updateBadge();
+                // Re-sync choice/approval UI when panel becomes visible again.
+                // If webview JS context was preserved (not destroyed), webviewReady
+                // won't fire, so _handleWebviewReady won't re-send the pending state.
+                // This message tells the webview to re-render choice/approval buttons.
+                this._view?.webview.postMessage({ type: 'refreshPendingUI' } as ToWebviewMessage);
             }
         }, null, this._disposables);
 
