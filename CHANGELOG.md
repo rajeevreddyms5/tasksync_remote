@@ -2,6 +2,17 @@
 
 All notable changes to FlowCommand will be documented in this file.
 
+## [2.0.4] - 2026-02-10
+
+### Fixed
+- **Badge not showing & state lost on re-navigation** — fixed race condition where `_updateBadge()` was called before `_pendingRequests.set()` in both `waitForUserResponse` and `waitForMultiQuestionResponse`. The defensive cleanup in `_updateBadge` cleared `_currentToolCallId` because the pending request wasn't registered yet, causing:
+  - Sidebar badge always showing 0 (badge never appeared)
+  - AI message and input prompt not restoring when re-navigating to FlowCommand panel
+  - Remote sessions not showing pending requests on connect/refresh
+- **Remote state losing explicit choices** — `getRemoteState()` now uses stored `_currentExplicitChoices` instead of re-parsing choices from prompt text, preserving original AI-provided choice buttons for remote clients
+
+---
+
 ## [2.0.3] - 2025-07-11
 
 ### Added

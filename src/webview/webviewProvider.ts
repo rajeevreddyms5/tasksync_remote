@@ -1117,7 +1117,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                         questions: this._currentMultiQuestions
                     };
                 } else {
-                    const choices = this._parseChoices(pendingEntry.prompt);
+                    const choices = this._currentExplicitChoices || this._parseChoices(pendingEntry.prompt);
                     const isApproval = choices.length === 0 && this._isApprovalQuestion(pendingEntry.prompt);
                     pendingRequest = {
                         id: this._currentToolCallId,
@@ -1412,10 +1412,12 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         this._setProcessingState(false);
         
         this._updateCurrentSessionUI();
-        this._updateBadge();
 
+        // Register pending request BEFORE _updateBadge so the defensive cleanup
+        // in _updateBadge doesn't clear _currentToolCallId (it checks _pendingRequests)
         return new Promise<UserResponseResult>((resolve) => {
             this._pendingRequests.set(toolCallId, resolve);
+            this._updateBadge();
         });
     }
 
@@ -1544,10 +1546,12 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
 
         this._setProcessingState(false);
         this._updateCurrentSessionUI();
-        this._updateBadge();
 
+        // Register pending request BEFORE _updateBadge so the defensive cleanup
+        // in _updateBadge doesn't clear _currentToolCallId (it checks _pendingRequests)
         return new Promise<UserResponseResult>((resolve) => {
             this._pendingRequests.set(requestId, resolve);
+            this._updateBadge();
         });
     }
 
