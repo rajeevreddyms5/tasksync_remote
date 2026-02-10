@@ -631,33 +631,40 @@ async function handleInstructionInjection(forceInject: boolean = false): Promise
                 }
 
                 if (fileState === 'corrupted') {
-                    // Corrupted markers - warn user and offer to fix
-                    const action = await vscode.window.showWarningMessage(
-                        'FlowCommand detected corrupted instruction markers in copilot-instructions.md. This may cause issues.',
-                        'Fix Now',
-                        'Ignore'
-                    );
-                    if (action === 'Fix Now') {
+                    if (forceInject) {
+                        // Force fix: remove corrupted markers and re-inject
                         await removeFromCopilotInstructionsMd();
-                        await injectIntoCopilotInstructionsMd(true); // Force inject without prompting
-                    }
-                    return;
-                }
-
-                if (fileState === 'modified' && !forceInject) {
-                    // User modified the FlowCommand section - warn them
-                    const action = await vscode.window.showWarningMessage(
-                        'FlowCommand instructions in copilot-instructions.md have been modified. Re-inject to restore expected behavior?',
-                        'Re-inject',
-                        'Keep Current'
-                    );
-                    if (action === 'Re-inject') {
                         await injectIntoCopilotInstructionsMd(true);
+                    } else {
+                        // Corrupted markers - warn user and offer to fix
+                        const action = await vscode.window.showWarningMessage(
+                            'FlowCommand detected corrupted instruction markers in copilot-instructions.md. This may cause issues.',
+                            'Fix Now',
+                            'Ignore'
+                        );
+                        if (action === 'Fix Now') {
+                            await removeFromCopilotInstructionsMd();
+                            await injectIntoCopilotInstructionsMd(true);
+                        }
+                        return;
                     }
-                    return;
-                }
-
-                if (fileState === 'missing' || fileState === 'no-file') {
+                } else if (fileState === 'correct' || fileState === 'modified') {
+                    if (forceInject) {
+                        // Force re-inject: update the existing section
+                        await injectIntoCopilotInstructionsMd(true);
+                    } else if (fileState === 'modified') {
+                        // User modified the FlowCommand section - warn them
+                        const action = await vscode.window.showWarningMessage(
+                            'FlowCommand instructions in copilot-instructions.md have been modified. Re-inject to restore expected behavior?',
+                            'Re-inject',
+                            'Keep Current'
+                        );
+                        if (action === 'Re-inject') {
+                            await injectIntoCopilotInstructionsMd(true);
+                        }
+                        return;
+                    }
+                } else if (fileState === 'missing' || fileState === 'no-file') {
                     // Check if this is a settings-triggered injection (force) or IDE restart
                     if (!forceInject && storedState?.method === method && storedState?.contentHash === contentHash) {
                         // Previously injected with same settings but file/section is now missing
@@ -696,7 +703,10 @@ async function handleInstructionInjection(forceInject: boolean = false): Promise
                     return;
                 }
 
-                if (settingsState === 'modified' && !forceInject) {
+                if ((settingsState === 'correct' || settingsState === 'modified') && forceInject) {
+                    // Force re-inject: update the settings entry
+                    injectIntoCodeGenSettings();
+                } else if (settingsState === 'modified' && !forceInject) {
                     // User modified - warn
                     const action = await vscode.window.showWarningMessage(
                         'FlowCommand instructions in Code Generation settings have been modified. Re-inject?',
@@ -707,9 +717,7 @@ async function handleInstructionInjection(forceInject: boolean = false): Promise
                         injectIntoCodeGenSettings();
                     }
                     return;
-                }
-
-                if (settingsState === 'missing') {
+                } else if (settingsState === 'missing') {
                     if (!forceInject && storedState?.method === method && storedState?.contentHash === contentHash) {
                         // Previously injected but now missing
                         const action = await vscode.window.showWarningMessage(
