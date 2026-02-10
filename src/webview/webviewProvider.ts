@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { FILE_EXCLUSION_PATTERNS, FILE_SEARCH_EXCLUSION_PATTERNS, formatExcludePattern } from '../constants/fileExclusions';
+import { AGENT_INSTRUCTIONS } from '../constants/instructions';
 import { ContextManager, ContextReferenceType, ContextReference } from '../context';
 import { resolvePlanReview } from '../planReview/index';
 import { PlanReviewPanelResult } from '../planReview/types';
@@ -665,7 +666,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         this._mobileNotificationEnabled = config.get<boolean>('mobileNotification', false);
         this._interactiveApprovalEnabled = config.get<boolean>('interactiveApproval', true);
         this._instructionInjection = config.get<string>('instructionInjection', 'off');
-        this._instructionText = config.get<string>('instructionText', '');
+        this._instructionText = config.get<string>('instructionText', '') || AGENT_INSTRUCTIONS;
 
         // Load reusable prompts from settings
         const savedPrompts = config.get<Array<{ name: string; prompt: string; isTemplate?: boolean }>>('reusablePrompts', []);
