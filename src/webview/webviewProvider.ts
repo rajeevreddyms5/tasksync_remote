@@ -4401,7 +4401,8 @@ export class FlowCommandWebviewProvider
 
     // Pattern 1b: Inline numbered lists "1. option 2. option 3. option" or "1 - option 2 - option"
     // Use a lookahead that also stops at sentence-ending patterns (e.g., ". Wait") for the last option
-    const inlineNumberedPattern = /(\d+)[.)]\s+([^0-9]+?)(?=\s+\d+[.)]|\s*$)/g;
+    const inlineNumberedPattern =
+      /(\d+)(?:[.):]|\s+-)\s+([^0-9]+?)(?=\s+\d+(?:[.):]|\s+-)|[.!]\s+(?:Wait|wait|Please|please|Then|then|Select|select)|[.?!]\s*$|$)/g;
     const inlineNumberedMatches: { num: string; text: string }[] = [];
 
     // Only try inline if no multi-line matches found
