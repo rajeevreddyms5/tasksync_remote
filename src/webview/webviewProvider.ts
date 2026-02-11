@@ -338,9 +338,14 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         // Only save completed calls from current session
         const completedCalls = this._currentSessionCalls.filter(tc => tc.status === 'completed');
         if (completedCalls.length > 0) {
-            // Prepend current session calls to persisted history, enforce max limit
-            this._persistedHistory = [...completedCalls, ...this._persistedHistory].slice(0, this._MAX_HISTORY_ENTRIES);
-            this._historyDirty = true;
+            // Filter out calls that are already in history to prevent duplication
+            const existingIds = new Set(this._persistedHistory.map(h => h.id));
+            const newCalls = completedCalls.filter(c => !existingIds.has(c.id));
+            if (newCalls.length > 0) {
+                // Prepend new calls to persisted history, enforce max limit
+                this._persistedHistory = [...newCalls, ...this._persistedHistory].slice(0, this._MAX_HISTORY_ENTRIES);
+                this._historyDirty = true;
+            }
         }
 
         // Force sync save on deactivation (async operations can't complete in deactivate)
@@ -840,6 +845,12 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         // Clean up temp images from current session before clearing
         this._cleanupTempImagesFromEntries(this._currentSessionCalls);
 
+        // Clean up temp images from queue and staged attachments
+        for (const queued of this._promptQueue) {
+            this._cleanupAttachments(queued.attachments);
+        }
+        this._cleanupAttachments(this._attachments);
+
         // Clear session data
         this._currentSessionCalls = [];
         this._attachments = [];
@@ -1208,16 +1219,18 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         );
 
         // Clean up when webview is disposed
+        const currentView = webviewView;
         webviewView.onDidDispose(() => {
-            this._webviewReady = false;
-            // Keep a fallback reference for badge updates from remote clients
-            // while the sidebar is collapsed/disposed
-            this._viewForBadge = this._view;
-            this._view = undefined;
+            // Only clear state if this is still the active view
+            if (this._view === currentView) {
+                this._webviewReady = false;
+                // Keep a fallback reference for badge updates from remote clients
+                // while the sidebar is collapsed/disposed
+                this._viewForBadge = this._view;
+                this._view = undefined;
+            }
             // Clear file search cache when view is hidden
             this._fileSearchCache.clear();
-            // Save current session to persisted history when view is disposed
-            this.saveCurrentSessionToHistory();
         }, null, this._disposables);
 
         // Handle webview visibility changes
@@ -1225,9 +1238,6 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             if (!webviewView.visible) {
                 // WebviewView destroys JS context when hidden — mark as not ready
                 // so messages aren't silently lost, and re-send state on restore
-                this._webviewReady = false;
-                // Save current session when switching away
-                this.saveCurrentSessionToHistory();
             } else {
                 // Re-sync badge state when panel becomes visible again.
                 // This ensures the VS Code sidebar icon badge is correct even if
@@ -1302,7 +1312,17 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             });
         }
 
+        // Create deferred promise to register request immediately
+        // This prevents race conditions where _updateBadge checks _pendingRequests before it's set
+        let resolveRequest: (result: UserResponseResult) => void;
+        const responsePromise = new Promise<UserResponseResult>((resolve) => {
+            resolveRequest = resolve;
+        });
+
+        // Register pending request synchronously
         this._currentToolCallId = toolCallId;
+        this._pendingRequests.set(toolCallId, resolveRequest!);
+        this._updateBadge();
 
         // Check if queue is enabled, not paused, and has prompts - auto-respond
         if (this._queueEnabled && !this._queuePaused && this._promptQueue.length > 0) {
@@ -1325,11 +1345,17 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 this._currentSessionCallsMap.set(entry.id, entry); // Maintain O(1) lookup map
                 this._trimCurrentSessionCalls();
                 this._updateCurrentSessionUI();
+                
+                // Cleanup pending state
+                this._pendingRequests.delete(toolCallId);
                 this._currentToolCallId = null;
                 this._updateBadge();
 
+                // Append template to the prompt if active
+                const finalValue = this._appendTemplateToPrompt(queuedPrompt.prompt);
+
                 return {
-                    value: queuedPrompt.prompt,
+                    value: finalValue,
                     queue: true,
                     attachments: queuedPrompt.attachments || []  // Return stored attachments
                 };
@@ -1426,12 +1452,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         
         this._updateCurrentSessionUI();
 
-        // Register pending request BEFORE _updateBadge so the defensive cleanup
-        // in _updateBadge doesn't clear _currentToolCallId (it checks _pendingRequests)
-        return new Promise<UserResponseResult>((resolve) => {
-            this._pendingRequests.set(toolCallId, resolve);
-            this._updateBadge();
-        });
+        return responsePromise;
     }
 
     /**
@@ -1508,9 +1529,18 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
             });
         }
 
+        // Create deferred promise to register request immediately
+        let resolveRequest: (result: UserResponseResult) => void;
+        const responsePromise = new Promise<UserResponseResult>((resolve) => {
+            resolveRequest = resolve;
+        });
+
+        // Register pending request synchronously
         this._currentToolCallId = requestId;
         // Store questions for remote state sync
         this._currentMultiQuestions = safeQuestions;
+        this._pendingRequests.set(requestId, resolveRequest!);
+        this._updateBadge();
 
         this._view.show(this._autoFocusPanelEnabled);
 
@@ -1560,12 +1590,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
         this._setProcessingState(false);
         this._updateCurrentSessionUI();
 
-        // Register pending request BEFORE _updateBadge so the defensive cleanup
-        // in _updateBadge doesn't clear _currentToolCallId (it checks _pendingRequests)
-        return new Promise<UserResponseResult>((resolve) => {
-            this._pendingRequests.set(requestId, resolve);
-            this._updateBadge();
-        });
+        return responsePromise;
     }
 
     /**
@@ -1709,10 +1734,10 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 }
                 break;
             case 'searchContext':
-                this._handleSearchContext(message.query);
+                this._handleSearchContext(message.query, this._isRemoteMessageContext);
                 break;
             case 'selectContextReference':
-                this._handleSelectContextReference(message.contextType, message.options);
+                this._handleSelectContextReference(message.contextType, message.options, this._isRemoteMessageContext);
                 break;
         }
     }
@@ -1880,23 +1905,26 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
     }
 
     /**
+     * Clean up temporary images from a list of attachments
+     */
+    private _cleanupAttachments(attachments: AttachmentInfo[] | undefined): void {
+        if (!attachments || attachments.length === 0) return;
+        const tempUris = attachments
+            .filter(a => a.isTemporary && a.uri)
+            .map(a => a.uri);
+        
+        if (tempUris.length > 0) {
+            this._cleanupTempImagesByUri(tempUris);
+        }
+    }
+
+    /**
      * Clean up temporary images from tool call entries
      * Called when entries are removed from current session or on dispose
      */
     private _cleanupTempImagesFromEntries(entries: ToolCallEntry[]): void {
-        const tempUris: string[] = [];
         for (const entry of entries) {
-            if (entry.attachments) {
-                for (const att of entry.attachments) {
-                    // Only clean up temporary attachments (pasted/dropped images)
-                    if (att.isTemporary && att.uri) {
-                        tempUris.push(att.uri);
-                    }
-                }
-            }
-        }
-        if (tempUris.length > 0) {
-            this._cleanupTempImagesByUri(tempUris);
+            this._cleanupAttachments(entry.attachments);
         }
     }
 
@@ -2225,6 +2253,15 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 return;
             }
 
+            // Validate file size before reading
+            const stats = await fs.promises.stat(filePath);
+            const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+            if (stats.size > MAX_IMAGE_SIZE_BYTES) {
+                const sizeMB = (stats.size / (1024 * 1024)).toFixed(2);
+                vscode.window.showWarningMessage(`Image too large (${sizeMB}MB). Max 10MB.`);
+                return;
+            }
+
             // Validate it's an image by checking extension
             const ext = path.extname(filePath).toLowerCase().replace('.', '');
             const validExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'];
@@ -2397,6 +2434,10 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
      */
     private _handleRemoveQueuePrompt(promptId: string): void {
         if (!this._isValidQueueId(promptId)) return;
+        const removed = this._promptQueue.find(p => p.id === promptId);
+        if (removed) {
+            this._cleanupAttachments(removed.attachments);
+        }
         this._promptQueue = this._promptQueue.filter(p => p.id !== promptId);
         this._saveQueueToDisk();
         this._updateQueueUI();
@@ -2445,6 +2486,9 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
      * Handle clearing the queue
      */
     private _handleClearQueue(): void {
+        for (const prompt of this._promptQueue) {
+            this._cleanupAttachments(prompt.attachments);
+        }
         this._promptQueue = [];
         this._saveQueueToDisk();
         this._updateQueueUI();
@@ -2534,6 +2578,10 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
      * Handle removing a history item from persisted history (modal only)
      */
     private _handleRemoveHistoryItem(callId: string): void {
+        const removed = this._persistedHistory.find(tc => tc.id === callId);
+        if (removed) {
+            this._cleanupAttachments(removed.attachments);
+        }
         this._persistedHistory = this._persistedHistory.filter(tc => tc.id !== callId);
         this._updatePersistedHistoryUI();
         this._savePersistedHistoryToDisk();
@@ -2543,6 +2591,9 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
      * Handle clearing all persisted history
      */
     private _handleClearPersistedHistory(): void {
+        for (const entry of this._persistedHistory) {
+            this._cleanupAttachments(entry.attachments);
+        }
         this._persistedHistory = [];
         this._updatePersistedHistoryUI();
         this._savePersistedHistoryToDisk();
@@ -3015,31 +3066,43 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
     /**
      * Handle searching context references (#terminal, #problems) - deprecated, now handled via file search
      */
-    private async _handleSearchContext(query: string): Promise<void> {
+    private async _handleSearchContext(query: string, isRemote: boolean = false): Promise<void> {
         try {
             const suggestions = await this._contextManager.getContextSuggestions(query);
-            this._view?.webview.postMessage({
+            const message = {
                 type: 'contextSearchResults',
                 suggestions: suggestions.map(s => ({
                     type: s.type,
                     label: s.label,
                     description: s.description,
                     detail: s.detail
-                }))
-            } as ToWebviewMessage);
+                })) 
+            } as ToWebviewMessage;
+
+            if (isRemote) {
+                this._broadcastCallback?.(message);
+            } else {
+                this._view?.webview.postMessage(message);
+            }
         } catch (error) {
             console.error('[FlowCommand] Error searching context:', error);
-            this._view?.webview.postMessage({
+            const errorMessage = {
                 type: 'contextSearchResults',
                 suggestions: []
-            } as ToWebviewMessage);
+            } as ToWebviewMessage;
+
+            if (isRemote) {
+                this._broadcastCallback?.(errorMessage);
+            } else {
+                this._view?.webview.postMessage(errorMessage);
+            }
         }
     }
 
     /**
      * Handle selecting a context reference to add as attachment
      */
-    private async _handleSelectContextReference(contextType: string, options?: Record<string, unknown>): Promise<void> {
+    private async _handleSelectContextReference(contextType: string, options?: Record<string, unknown>, isRemote: boolean = false): Promise<void> {
         try {
             const reference = await this._contextManager.getContextContent(
                 contextType as ContextReferenceType,
@@ -3058,7 +3121,7 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                 this._updateAttachmentsUI();
 
                 // Also send the reference content so it can be displayed
-                this._view?.webview.postMessage({
+                const message = {
                     type: 'contextReferenceAdded',
                     reference: {
                         id: reference.id,
@@ -3066,7 +3129,13 @@ export class FlowCommandWebviewProvider implements vscode.WebviewViewProvider, v
                         label: reference.label,
                         content: reference.content
                     }
-                } as ToWebviewMessage);
+                } as ToWebviewMessage;
+
+                if (isRemote) {
+                    this._broadcastCallback?.(message);
+                } else {
+                    this._view?.webview.postMessage(message);
+                }
             } else {
                 // Still add a placeholder attachment showing it was selected but empty
                 const emptyId = `ctx_empty_${Date.now()}`;
