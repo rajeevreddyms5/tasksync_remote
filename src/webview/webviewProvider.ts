@@ -338,6 +338,12 @@ export class FlowCommandWebviewProvider
 
   // Pending plan review count (tracked separately since plan_review lives outside this class)
   private _pendingPlanReviewCount: number = 0;
+  // Pending plan review data for remote sync (allows new remote clients to see pending reviews)
+  private _pendingPlanReview: {
+    reviewId: string;
+    title: string;
+    plan: string;
+  } | null = null;
 
   // Fallback view reference for badge updates when the primary view is disposed
   // (e.g., user answers from remote browser while sidebar is collapsed)
@@ -594,6 +600,8 @@ export class FlowCommandWebviewProvider
     title: string,
     plan: string,
   ): void {
+    // Store for remote sync (allows new remote clients to see pending reviews)
+    this._pendingPlanReview = { reviewId, title, plan };
     const message = {
       type: "planReviewPending" as const,
       reviewId,
@@ -609,6 +617,10 @@ export class FlowCommandWebviewProvider
    * Dismisses any remote plan review modal.
    */
   public broadcastPlanReviewCompleted(reviewId: string, status: string): void {
+    // Clear pending plan review data
+    if (this._pendingPlanReview?.reviewId === reviewId) {
+      this._pendingPlanReview = null;
+    }
     const message = {
       type: "planReviewCompleted" as const,
       reviewId,
@@ -1062,6 +1074,7 @@ export class FlowCommandWebviewProvider
     }
     this._queuedAgentRequests = [];
     this._pendingPlanReviewCount = 0;
+    this._pendingPlanReview = null;
 
     // Clear badge before view is disposed
     if (this._view) {
@@ -1345,6 +1358,7 @@ export class FlowCommandWebviewProvider
   public getRemoteState(): {
     queue: QueuedPrompt[];
     queueEnabled: boolean;
+    queuePaused: boolean;
     currentSession: ToolCallEntry[];
     persistedHistory: ToolCallEntry[];
     pendingRequest: {
@@ -1355,6 +1369,7 @@ export class FlowCommandWebviewProvider
       choices?: ParsedChoice[];
     } | null;
     pendingMultiQuestion: { requestId: string; questions: Question[] } | null;
+    pendingPlanReview: { reviewId: string; title: string; plan: string } | null;
     queuedAgentRequestCount: number;
     pendingInputCount: number;
     settings: {
@@ -1411,10 +1426,12 @@ export class FlowCommandWebviewProvider
     return {
       queue: this._promptQueue,
       queueEnabled: this._queueEnabled,
+      queuePaused: this._queuePaused,
       currentSession: this._currentSessionCalls,
       persistedHistory: this._persistedHistory,
       pendingRequest,
       pendingMultiQuestion,
+      pendingPlanReview: this._pendingPlanReview,
       queuedAgentRequestCount: this._queuedAgentRequests.length,
       pendingInputCount:
         (this._currentToolCallId &&
@@ -4209,9 +4226,6 @@ export class FlowCommandWebviewProvider
                     <button class="queue-clear-btn" id="queue-clear-btn" title="Clear all queue items" aria-label="Clear queue">
                         <span class="codicon codicon-trash" aria-hidden="true"></span>
                     </button>
-                    <button class="queue-pause-btn" id="queue-pause-btn" title="Pause/Resume queue processing" aria-label="Pause queue">
-                        <span class="codicon codicon-debug-pause" aria-hidden="true"></span>
-                    </button>
                 </div>
                 <div class="queue-list" id="queue-list" role="list" aria-label="Queued prompts">
                     <div class="queue-empty" role="status">No prompts in queue</div>
@@ -4239,6 +4253,9 @@ export class FlowCommandWebviewProvider
                             <span class="codicon codicon-chevron-down"></span>
                         </button>
                     </div>
+                    <button class="queue-pause-btn hidden" id="queue-pause-btn" title="Pause queue processing" aria-label="Pause queue">
+                        <span class="codicon codicon-debug-pause" aria-hidden="true"></span>
+                    </button>
                 </div>
                 <div class="actions-right">
                     <button id="end-session-btn" class="icon-btn end-session-btn" title="End session" aria-label="End session">

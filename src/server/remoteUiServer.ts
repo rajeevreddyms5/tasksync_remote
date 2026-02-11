@@ -25,6 +25,7 @@ export type RemoteMessage = {
 export interface RemoteState {
   queue: unknown[];
   queueEnabled: boolean;
+  queuePaused?: boolean;
   currentSession: unknown[];
   persistedHistory: unknown[];
   pendingRequest: {
@@ -35,6 +36,7 @@ export interface RemoteState {
     choices?: unknown[];
   } | null;
   pendingMultiQuestion: { requestId: string; questions: unknown[] } | null;
+  pendingPlanReview?: { reviewId: string; title: string; plan: string } | null;
   settings: {
     soundEnabled: boolean;
     interactiveApprovalEnabled: boolean;
@@ -2869,9 +2871,6 @@ self.addEventListener('fetch', event => {
                         <button class="queue-clear-btn" id="queue-clear-btn" title="Clear all queue items" aria-label="Clear queue">
                             <span class="codicon codicon-trash" aria-hidden="true"></span>
                         </button>
-                        <button class="queue-pause-btn" id="queue-pause-btn" title="Pause/Resume queue processing" aria-label="Pause queue">
-                            <span class="codicon codicon-debug-pause" aria-hidden="true"></span>
-                        </button>
                     </div>
                     <div class="queue-list" id="queue-list" role="list" aria-label="Queued prompts">
                         <div class="queue-empty" role="status">No prompts in queue</div>
@@ -2895,6 +2894,9 @@ self.addEventListener('fetch', event => {
                                     <span class="codicon codicon-chevron-down"></span>
                                 </button>
                             </div>
+                            <button class="queue-pause-btn hidden" id="queue-pause-btn" title="Pause queue processing" aria-label="Pause queue">
+                                <span class="codicon codicon-debug-pause" aria-hidden="true"></span>
+                            </button>
                         </div>
                         <div class="actions-right">
                             <button id="end-session-btn" class="icon-btn end-session-btn" title="End session" aria-label="End session">
@@ -3344,6 +3346,9 @@ self.addEventListener('fetch', event => {
                     if (state.queue !== undefined) {
                         window.dispatchVSCodeMessage({ type: 'updateQueue', queue: state.queue, enabled: state.queueEnabled });
                     }
+                    if (state.queuePaused !== undefined) {
+                        window.dispatchVSCodeMessage({ type: state.queuePaused ? 'queuePaused' : 'queueResumed' });
+                    }
                     if (state.currentSession) {
                         window.dispatchVSCodeMessage({ type: 'updateCurrentSession', history: state.currentSession });
                     }
@@ -3378,6 +3383,15 @@ self.addEventListener('fetch', event => {
                     } else {
                         // No pending request - clear any stale pending UI
                         window.dispatchVSCodeMessage({ type: 'toolCallCancelled', id: '__stale__' });
+                    }
+                    // Sync pending plan review separately (can coexist with other pending states)
+                    if (state.pendingPlanReview) {
+                        window.dispatchVSCodeMessage({
+                            type: 'planReviewPending',
+                            reviewId: state.pendingPlanReview.reviewId,
+                            title: state.pendingPlanReview.title,
+                            plan: state.pendingPlanReview.plan
+                        });
                     }
                     // Sync queued agent request count
                     if (state.queuedAgentRequestCount !== undefined) {
