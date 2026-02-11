@@ -11,7 +11,7 @@ import { FlowCommandWebviewProvider } from '../webview/webviewProvider';
 import { askUser } from '../tools';
 import { planReview } from '../planReview';
 import { getImageMimeType } from '../utils/imageUtils';
-import { ASK_USER_TOOL_DESCRIPTION, PLAN_REVIEW_TOOL_DESCRIPTION } from '../constants/instructions';
+import { ASK_USER_TOOL_DESCRIPTION, PLAN_REVIEW_TOOL_DESCRIPTION, AGENT_INSTRUCTIONS } from '../constants/instructions';
 
 
 async function tryReadImageAsMcpContent(uri: string): Promise<null | { type: 'image'; data: string; mimeType: string }> {
@@ -201,6 +201,36 @@ export class McpServerManager {
                     }
                 );
             }
+
+            // Register FlowCommand workflow instructions as MCP prompt
+            (this.mcpServer as any).setPromptsHandler(async () => {
+                return {
+                    prompts: [
+                        {
+                            name: "flowcommand-instructions",
+                            description: "FlowCommand workflow instructions for using ask_user and plan_review tools effectively. Include these instructions in your system prompt to follow FlowCommand's interaction patterns.",
+                            arguments: []
+                        }
+                    ]
+                };
+            });
+
+            (this.mcpServer as any).setGetPromptHandler(async (params: { name: string }) => {
+                if (params.name === "flowcommand-instructions") {
+                    return {
+                        messages: [
+                            {
+                                role: "user",
+                                content: {
+                                    type: "text",
+                                    text: AGENT_INSTRUCTIONS
+                                }
+                            }
+                        ]
+                    };
+                }
+                throw new Error(`Unknown prompt: ${params.name}`);
+            });
 
             // Create transport
             this.transport = new StreamableHTTPServerTransport({

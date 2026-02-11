@@ -423,6 +423,66 @@ Create a simple 3-step plan and call plan_review for approval.
 
 ---
 
+## 20. MCP Server (External IDEs)
+
+### 20.1 MCP Server Start/Stop
+
+- [ ] Manual start: Command Palette → "FlowCommand: Start MCP Server" → Server starts, port shown in output
+- [ ] Status check: Look for "FlowCommand MCP server running on port..." message
+- [ ] Manual stop: Command Palette → "FlowCommand: Stop MCP Server" → Server stops gracefully
+
+### 20.2 MCP Server Auto-Start
+
+- [ ] Client detection: With `.cursor/mcp.json` or `~/Library/Application Support/Kiro/mcp.json` present → MCP server auto-starts on extension activation
+- [ ] Manual enable: Settings → flowcommand.mcpEnabled = true → MCP server starts on next reload
+
+### 20.3 MCP Tools Registration
+
+**Test using MCP Inspector or external IDE:**
+
+- [ ] List tools: Call `tools/list` → Returns: "ask_user" and "plan_review" tools
+- [ ] ask_user description: Check ask_user tool → Description mentions subagent warning and context parameter
+- [ ] plan_review description: Check plan_review tool → Description explains approval workflow
+
+### 20.4 MCP Prompts Registration (NEW)
+
+**Test using MCP Inspector or external IDE:**
+
+- [ ] List prompts: Call `prompts/list` → Returns: "flowcommand-instructions" prompt
+- [ ] Prompt description: Check prompt metadata → Description: "FlowCommand workflow instructions for using ask_user and plan_review tools effectively..."
+- [ ] Get prompt: Call `prompts/get` with name="flowcommand-instructions" → Returns full AGENT_INSTRUCTIONS text including:
+  - Subagent rules at top
+  - Rule 1: Always call ask_user at end of every response
+  - Rule 2: Use plan_review for structured output
+  - Rule 3: Stop signals
+  - Rule 4: Subagent spawning template
+
+### 20.5 External IDE Integration
+
+**Test with Cursor, Claude Desktop, or Kiro:**
+
+- [ ] Connection: Configure external IDE to connect to FlowCommand MCP server → Connection successful
+- [ ] Tool availability: Check external IDE → ask_user and plan_review tools available
+- [ ] Prompt discovery: Check external IDE → "flowcommand-instructions" prompt available
+- [ ] ask_user call: From external IDE, trigger ask_user → Question appears in VS Code FlowCommand panel
+- [ ] Response: Answer in FlowCommand panel → Response sent back to external IDE
+- [ ] Workflow behavior: With instructions included → AI follows FlowCommand patterns (always calls ask_user, etc.)
+
+**Example MCP Client Config (Cursor `.cursor/mcp.json`):**
+```json
+{
+  "mcpServers": {
+    "flowcommand-chat": {
+      "command": "node",
+      "args": [],
+      "url": "http://localhost:3579/sse"
+    }
+  }
+}
+```
+
+---
+
 ## Summary Checklist
 
 After all tests, verify these categories pass:
@@ -438,6 +498,7 @@ After all tests, verify these categories pass:
 - [x] **Interactive Approval**: Number/letter/bullet options parsed correctly
 - [x] **Notifications**: Sound and push notifications work (Browser notifications blocked on iOS Safari due to HTTP connection and popup notifications are working)
 - [x] **Plan Review Sync**: VS Code and remote dismiss in sync
+- [ ] **MCP Server**: MCP tools and prompts work, external IDEs can connect and use FlowCommand
 
 ---
 
