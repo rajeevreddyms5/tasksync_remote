@@ -1591,11 +1591,19 @@ button#send-btn .codicon {
 
 /* End Session Button - always visible in actions bar */
 .end-session-btn {
-  color: var(--vscode-descriptionForeground);
+  color: rgba(
+    241,
+    76,
+    76,
+    0.7
+  ); /* Red at 70% opacity - signals destructive action */
+  opacity: 0.8;
+  transition: all 0.2s ease;
 }
 
 .end-session-btn:hover {
-  color: var(--vscode-errorForeground, #f14c4c);
+  color: rgba(241, 76, 76, 1); /* Full red on hover - emphasizes danger */
+  opacity: 1;
 }
 
 .end-session-btn.active {

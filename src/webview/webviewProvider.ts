@@ -608,8 +608,9 @@ export class FlowCommandWebviewProvider
       title,
       plan,
     };
-    // Only broadcast to remote clients - dedicated VS Code panel handles IDE
-    this._broadcastCallback?.(message);
+    // Broadcast to BOTH webview AND remote clients (shows modal in sidebar + remote browser)
+    // This ensures remote clients see plan review even if they reconnect after it was triggered
+    this._postMessage(message);
   }
 
   /**
@@ -647,7 +648,7 @@ export class FlowCommandWebviewProvider
         )
         .then((action) => {
           if (action === "Open FlowCommand" && this._view) {
-            this._view.show(true);
+            this._view.show(this._autoFocusPanelEnabled);
           }
         });
     }
@@ -2260,6 +2261,19 @@ export class FlowCommandWebviewProvider
         this._currentToolCallId = null;
         this._updateBadge();
 
+        // Ensure remote clients get immediate badge update after IDE submit
+        // (prevent stale "1" badge on remote when IDE responds)
+        setTimeout(() => {
+          const total =
+            (this._currentToolCallId &&
+            this._pendingRequests.has(this._currentToolCallId)
+              ? 1
+              : 0) +
+            this._queuedAgentRequests.length +
+            this._pendingPlanReviewCount;
+          this._postMessage({ type: "pendingInputCount", count: total });
+        }, 50);
+
         // Process next queued agent request if any
         this._processNextQueuedToolCall();
       } else {
@@ -3277,7 +3291,7 @@ export class FlowCommandWebviewProvider
       .showInformationMessage(`FlowCommand: ${preview}`, "Open FlowCommand")
       .then((action) => {
         if (action === "Open FlowCommand" && this._view) {
-          this._view.show(true);
+          this._view.show(this._autoFocusPanelEnabled);
         }
       });
   }

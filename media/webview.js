@@ -807,11 +807,8 @@
     if (editConfirmBtn)
       editConfirmBtn.addEventListener("click", confirmEditMode);
 
-    // Approval modal button events
-    if (approvalContinueBtn)
-      approvalContinueBtn.addEventListener("click", handleApprovalContinue);
-    if (approvalNoBtn)
-      approvalNoBtn.addEventListener("click", handleApprovalNo);
+    // Approval modal button events are bound in showApprovalModal()
+    // since the modal content is rebuilt each time it's shown
 
     // End session button (always visible)
     if (endSessionBtn)
@@ -1578,8 +1575,9 @@
     queuePauseBtn = document.getElementById("queue-pause-btn");
     if (!queuePauseBtn) return;
 
-    // Only show pause button when queue mode is enabled AND queue has items
-    var shouldShow = queueEnabled && promptQueue.length > 0;
+    // Always show pause button when queue mode is enabled (not dependent on queue having items)
+    // This allows users to pause queue before AI asks questions, ensuring all new prompts go to queue
+    var shouldShow = queueEnabled;
     queuePauseBtn.classList.toggle("hidden", !shouldShow);
 
     var icon = queuePauseBtn.querySelector(".codicon");
@@ -2924,10 +2922,13 @@
       "</div>";
 
     // Rebind click handlers to the fresh buttons
-    var noBtn = approvalModal.querySelector(".approval-reject-btn");
-    var yesBtn = approvalModal.querySelector(".approval-accept-btn");
-    if (noBtn) noBtn.addEventListener("click", handleApprovalNo);
-    if (yesBtn) yesBtn.addEventListener("click", handleApprovalContinue);
+    // Update global variables to reference the new buttons
+    approvalNoBtn = approvalModal.querySelector(".approval-reject-btn");
+    approvalContinueBtn = approvalModal.querySelector(".approval-accept-btn");
+    if (approvalNoBtn)
+      approvalNoBtn.addEventListener("click", handleApprovalNo);
+    if (approvalContinueBtn)
+      approvalContinueBtn.addEventListener("click", handleApprovalContinue);
 
     approvalModal.classList.remove("hidden");
     // Note: Focus is handled by showPendingToolCall() which calls this function,

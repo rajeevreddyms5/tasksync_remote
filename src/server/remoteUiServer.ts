@@ -3346,9 +3346,7 @@ self.addEventListener('fetch', event => {
                     if (state.queue !== undefined) {
                         window.dispatchVSCodeMessage({ type: 'updateQueue', queue: state.queue, enabled: state.queueEnabled });
                     }
-                    if (state.queuePaused !== undefined) {
-                        window.dispatchVSCodeMessage({ type: state.queuePaused ? 'queuePaused' : 'queueResumed' });
-                    }
+                    // Queue pause state is included in updateQueue message above, no separate message needed
                     if (state.currentSession) {
                         window.dispatchVSCodeMessage({ type: 'updateCurrentSession', history: state.currentSession });
                     }
