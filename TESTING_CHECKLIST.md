@@ -31,9 +31,11 @@ Before starting tests, verify:
 ## Test Group 1: Extension Basics
 
 ### T1.1 — Extension Activation `[MANUAL]`
+
 **Verify**: FlowCommand icon (FC logo) is visible in the Activity Bar. Click it — panel opens with queue area and input field.
 
 ### T1.2 — Title Bar Icons `[MANUAL]`
+
 **Verify**: Panel title bar has 5 icons: 📡 Remote, 📜 History, 🏷️ Prompts, 🗑️ Clear, ⚙️ Settings. Hover each — tooltips appear.
 
 ---
@@ -41,29 +43,37 @@ Before starting tests, verify:
 ## Test Group 2: Queue Mode
 
 ### T2.1 — Queue Toggle `[MANUAL]`
+
 **Verify**: Click mode dropdown → toggle between "Queue Mode" and "Normal Mode". UI label and icon update correctly.
 
 ### T2.2 — Add Prompts to Queue `[MANUAL]`
+
 **Verify**: In Queue Mode, type "Test prompt 1" and press Enter → appears in queue. Add 2 more → count shows "3 items".
 
 ### T2.3 — Queue Management `[MANUAL]`
+
 **Verify**: Hover queue item → edit/delete buttons appear. Delete one → count decreases. Edit one → text updates. Drag to reorder → order persists.
 
 ### T2.4 — Queue Pause Button Always Visible
-**Verify**: With Queue Mode ON and queue EMPTY, the pause button (⏸️) should still be visible in the queue header. *(Fix #4)*
+
+**Verify**: With Queue Mode ON and queue EMPTY, the pause button (⏸️) should still be visible in the queue header. _(Fix #4)_
 
 ### T2.5 — Pause Behavior `[MANUAL]`
+
 **Verify**: Click ⏸️ → icon changes to ▶️, "(Paused)" label appears, yellow border shown, items dimmed.
 
 ### T2.6 — Paused Queue Does Not Auto-Consume
 
 **AI Action**: Run this prompt in Copilot Chat:
+
 ```
 Ask me a simple question using ask_user. Do not proceed until I respond.
 ```
+
 **Verify**: With queue paused and items in queue, the question appears but queue items are NOT consumed. Type a manual response → it sends correctly.
 
 ### T2.7 — Resume Behavior `[MANUAL]`
+
 **Verify**: Click ▶️ → unpauses. Trigger another `ask_user` → first queue item auto-consumed.
 
 ---
@@ -73,18 +83,23 @@ Ask me a simple question using ask_user. Do not proceed until I respond.
 ### T3.1 — Basic ask_user
 
 **AI Action**: Run in Copilot Chat:
+
 ```
 Ask me: "What color do you prefer?" using ask_user. Wait for my response.
 ```
+
 **Verify**: Question appears in FlowCommand panel. Type a response → AI receives it and continues.
 
 ### T3.2 — ask_user with Choices
 
 **AI Action**: Run in Copilot Chat:
+
 ```
 Ask me to choose a database using ask_user with these choices: PostgreSQL, MongoDB, SQLite. Wait for my selection.
 ```
-**Verify**: Choice buttons appear, text input is HIDDEN. Buttons include "Other" (italic) and "Cancel" (red). *(Fix #2)*
+
+**Verify**: Choice buttons appear, text input is HIDDEN. Buttons include "Other" (italic) and "Cancel" (red). _(Fix #2)_
+
 - Click a choice → response sent with that value
 - Click "Other" → text input reappears, choices hidden
 - Click "Cancel" → sends "User cancelled this question."
@@ -92,47 +107,60 @@ Ask me to choose a database using ask_user with these choices: PostgreSQL, Mongo
 ### T3.3 — ask_user with Yes/No Approval
 
 **AI Action**: Run in Copilot Chat:
+
 ```
 Ask me: "Should I proceed with the deployment?" using ask_user. Wait for my answer.
 ```
-**Verify**: If Interactive Approval is ON in settings, "Yes" and "No" buttons appear (plus "Cancel" button). Text input is hidden. *(Fix #2)*
+
+**Verify**: If Interactive Approval is ON in settings, "Yes" and "No" buttons appear (plus "Cancel" button). Text input is hidden. _(Fix #2)_
 
 ### T3.4 — Notifications on ask_user
 
 **AI Action**: Run in Copilot Chat:
+
 ```
 Ask me: "Are you still there?" using ask_user. Wait for my response.
 ```
+
 **Verify** (with all notifications enabled in settings):
+
 - Sound plays (880Hz beep)
-- IDE notification popup appears labeled "IDE Notification" *(Fix #3)*
-- Panel auto-focuses (steals focus when Auto-Focus is ON) *(Fix #5)*
+- IDE notification popup appears labeled "IDE Notification" _(Fix #3)_
+- Panel auto-focuses (steals focus when Auto-Focus is ON) _(Fix #5)_
 
 ### T3.5 — Auto-Focus Panel Inversion Check
 
 **AI Action**: Run in Copilot Chat:
+
 ```
 Ask me: "Test auto-focus" using ask_user. Wait for response.
 ```
-**Verify**: *(Fix #5)*
+
+**Verify**: _(Fix #5)_
+
 - Auto-Focus ON → panel steals focus (you're forced to look at it)
 - Auto-Focus OFF → panel does NOT steal focus (stays in background)
 
 ### T3.6 — Queue Auto-Response
 
 **AI Action**: Add "Yes, go ahead" to the queue (unpaused). Then run in Copilot Chat:
+
 ```
 Ask me if I want to proceed using ask_user. Wait for my response.
 ```
+
 **Verify**: Queue item "Yes, go ahead" is auto-consumed. AI receives the response without manual input.
 
 ### T3.7 — Waiting Indicator
 
 **AI Action**: Run in Copilot Chat:
+
 ```
 Ask me: "Do you see the waiting indicator?" using ask_user. Wait for my response.
 ```
-**Verify**: *(Feature #8)*
+
+**Verify**: _(Feature #8)_
+
 - Pulsing orange dot + "AI is waiting for your input" text appears at top of input wrapper
 - Orange glow/border on input area
 - Clicking the indicator scrolls to the pending question
@@ -145,6 +173,7 @@ Ask me: "Do you see the waiting indicator?" using ask_user. Wait for my response
 ### T4.1 — Multi-Question Display
 
 **AI Action**: Run in Copilot Chat:
+
 ```
 Ask me 3 questions at once using ask_user with the questions parameter:
 1. "What language?" with options: Python, JavaScript, Go
@@ -152,6 +181,7 @@ Ask me 3 questions at once using ask_user with the questions parameter:
 3. "Testing approach?" with options: Unit, Integration, E2E (allow multiple selection)
 Wait for my answers.
 ```
+
 **Verify**: All 3 questions appear in a form layout. Dropdowns, text inputs, and multi-select work correctly.
 
 ---
@@ -161,17 +191,22 @@ Wait for my answers.
 ### T5.1 — Plan Review Panel
 
 **AI Action**: Run in Copilot Chat:
+
 ```
 Create a 3-step plan for building a REST API and present it using plan_review. Wait for my approval.
 ```
+
 **Verify**:
+
 - New editor tab opens with plan content (markdown rendered)
 - 70/30 split layout (plan left, comments right)
 - Comment icons appear on hover over sections
 - Approve/Request Changes/Cancel buttons at bottom
 
 ### T5.2 — Plan Review Actions `[MANUAL]`
+
 **Verify**:
+
 - Click "Approve" → panel closes, AI proceeds
 - (Trigger again) Add comment + "Request Changes" → AI revises the plan
 - (Trigger again) Click "Cancel" → AI stops
@@ -179,7 +214,7 @@ Create a 3-step plan for building a REST API and present it using plan_review. W
 ### T5.3 — Waiting Indicator During Plan Review
 
 **AI Action**: Trigger plan_review (as in T5.1).
-**Verify**: The "AI is waiting for your input" pulsing indicator appears in the input area while plan review is open. *(Feature #8)*
+**Verify**: The "AI is waiting for your input" pulsing indicator appears in the input area while plan review is open. _(Feature #8)_
 
 ---
 
@@ -188,17 +223,21 @@ Create a 3-step plan for building a REST API and present it using plan_review. W
 ### T6.1 — Numbered Options
 
 **AI Action**: Run in Copilot Chat:
+
 ```
 Ask: "Which framework? 1. React 2. Vue 3. Angular" using ask_user with these as choices. Wait for selection.
 ```
+
 **Verify**: Buttons labeled with the options appear.
 
 ### T6.2 — Lettered Options
 
 **AI Action**: Run in Copilot Chat:
+
 ```
 Ask: "Testing approach? A. Unit tests B. Integration tests C. Both" using ask_user with these as choices. Wait for answer.
 ```
+
 **Verify**: Buttons labeled with the options appear.
 
 ---
@@ -206,9 +245,11 @@ Ask: "Testing approach? A. Unit tests B. Integration tests C. Both" using ask_us
 ## Test Group 7: File & Image References
 
 ### T7.1 — File Autocomplete `[MANUAL]`
+
 **Verify**: Type `#` in input → dropdown appears. Type "pack" → `package.json` shown. Select → chip appears.
 
 ### T7.2 — Image Paste `[MANUAL]`
+
 **Verify**: Take screenshot (Win+Shift+S), Ctrl+V in input → image thumbnail appears. Send → included in response.
 
 ---
@@ -216,9 +257,11 @@ Ask: "Testing approach? A. Unit tests B. Integration tests C. Both" using ask_us
 ## Test Group 8: History
 
 ### T8.1 — Session History `[MANUAL]`
+
 **Verify**: After running some ask_user tests, scroll up in panel → "Current Session" entries visible with prompt/response details.
 
 ### T8.2 — History Modal `[MANUAL]`
+
 **Verify**: Click 📜 History icon → modal opens with past sessions. "Clear History" removes entries.
 
 ---
@@ -226,30 +269,38 @@ Ask: "Testing approach? A. Unit tests B. Integration tests C. Both" using ask_us
 ## Test Group 9: Remote Server
 
 ### T9.1 — Start Server `[MANUAL]`
+
 **Verify**: Click 📡 Remote icon → status bar shows "FlowCommand" with broadcast icon. Dialog shows URL + QR code + PIN.
 
 ### T9.2 — Connect from Browser `[MANUAL]`
+
 **Verify**: Open URL in browser → PIN page loads. Enter 4-digit PIN → Remote UI loads with queue, input, Chat/Files/Output tabs.
 
 ### T9.3 — Remote ask_user Sync
 
 **AI Action** (with remote connected): Run in Copilot Chat:
+
 ```
 Ask me: "Can you see this from both IDE and remote?" using ask_user. Wait for my response.
 ```
+
 **Verify**:
+
 - Question appears in BOTH VS Code sidebar AND remote browser
-- Waiting indicator shows in BOTH *(Feature #8)*
-- Respond from VS Code → remote question clears, indicator disappears *(Sync verified)*
+- Waiting indicator shows in BOTH _(Feature #8)_
+- Respond from VS Code → remote question clears, indicator disappears _(Sync verified)_
 - (Repeat and respond from remote) → VS Code question clears, indicator disappears
 
 ### T9.4 — Remote Plan Review Sync
 
 **AI Action** (with remote connected): Run in Copilot Chat:
+
 ```
 Create a simple 2-step plan and call plan_review. Wait for approval.
 ```
-**Verify**: *(Fix #6)*
+
+**Verify**: _(Fix #6)_
+
 - Plan review modal appears on remote browser
 - Close/Approve in VS Code → remote modal disappears
 - (Repeat and respond from remote) → VS Code panel closes
@@ -257,21 +308,26 @@ Create a simple 2-step plan and call plan_review. Wait for approval.
 ### T9.5 — Remote Reconnect State Restore
 
 **AI Action**: Trigger an `ask_user`. While the question is pending:
-**Verify**: *(Fix #6, #7)*
+**Verify**: _(Fix #6, #7)_
+
 1. Click the refresh button in remote browser header → question re-appears, waiting indicator shows
-2. If queue was paused → still shows paused after refresh *(Fix #7)*
-3. If plan_review was active → plan review modal re-appears after refresh *(Fix #6)*
+2. If queue was paused → still shows paused after refresh _(Fix #7)_
+3. If plan_review was active → plan review modal re-appears after refresh _(Fix #6)_
 
 ### T9.6 — Remote Auto-Reconnect `[MANUAL]`
+
 **Verify**: Briefly lose connection (toggle airplane mode or disconnect WiFi) → remote shows "Disconnected. Reconnecting..." → auto-reconnects → state restored (pending question, queue pause state, plan review if active).
 
 ### T9.7 — Remote Theme Sync `[MANUAL]`
+
 **Verify**: Change VS Code theme (Ctrl+K Ctrl+T) → remote browser theme updates to match.
 
 ### T9.8 — Remote Queue Pause Sync `[MANUAL]`
+
 **Verify**: Pause queue in VS Code → remote shows paused. Resume from remote → VS Code shows resumed.
 
 ### T9.9 — Stop Server `[MANUAL]`
+
 **Verify**: Click 📡 icon again → server stops. Remote shows "Disconnected".
 
 ---
@@ -279,25 +335,31 @@ Create a simple 2-step plan and call plan_review. Wait for approval.
 ## Test Group 10: Settings
 
 ### T10.1 — Settings Modal `[MANUAL]`
+
 **Verify**: Click ⚙️ → modal opens with all settings.
 
 ### T10.2 — Notification Sound Toggle `[MANUAL]`
+
 **Verify**: Toggle sound ON → trigger ask_user → beep plays. Toggle OFF → no beep.
 
 ### T10.3 — IDE Notification Label
-**Verify**: Settings modal shows "IDE Notification" (not "Desktop Notification"). *(Fix #3)*
+
+**Verify**: Settings modal shows "IDE Notification" (not "Desktop Notification"). _(Fix #3)_
 
 ### T10.4 — Auto-Focus Panel Toggle
 
 **AI Action**: Toggle Auto-Focus Panel OFF. Run in Copilot Chat:
+
 ```
 Ask me: "Did focus stay?" using ask_user.
 ```
-**Verify**: Panel does NOT steal focus. *(Fix #5)*
+
+**Verify**: Panel does NOT steal focus. _(Fix #5)_
 
 Toggle Auto-Focus Panel ON. Repeat → panel DOES steal focus.
 
 ### T10.5 — Interactive Approval Toggle `[MANUAL]`
+
 **Verify**: Toggle OFF → ask_user shows text input only (no Yes/No buttons). Toggle ON → buttons appear.
 
 ---
@@ -305,7 +367,9 @@ Toggle Auto-Focus Panel ON. Repeat → panel DOES steal focus.
 ## Test Group 11: Instruction Injection
 
 ### T11.1 — Default Instruction Text `[MANUAL]`
-**Verify**: In Settings, expand "Instruction Text" → default text contains: *(Fix #1)*
+
+**Verify**: In Settings, expand "Instruction Text" → default text contains: _(Fix #1)_
+
 - `## SUBAGENT RULES` section
 - `## AGENT RULES` with 4 rules
 - Rule 1: "ALWAYS call ask_user"
@@ -313,7 +377,9 @@ Toggle Auto-Focus Panel ON. Repeat → panel DOES steal focus.
 - Rule 4: `runSubagent` VERBATIM instructions
 
 ### T11.2 — Injection Modes `[MANUAL]`
+
 **Verify**:
+
 - "copilotInstructionsMd" → creates/updates `.github/copilot-instructions.md`
 - "off" → removes FlowCommand section from file
 - Re-inject → section re-added
@@ -323,12 +389,15 @@ Toggle Auto-Focus Panel ON. Repeat → panel DOES steal focus.
 ## Test Group 12: Reusable Prompts & Slash Commands
 
 ### T12.1 — Create Prompt `[MANUAL]`
+
 **Verify**: Click 🏷️ Prompts → Add: Name "test", Prompt "Run all tests" → appears in list.
 
 ### T12.2 — Slash Command `[MANUAL]`
+
 **Verify**: Type `/` in input → dropdown shows. Type `/test` → "Run all tests" inserted.
 
 ### T12.3 — Prompt Template `[MANUAL]`
+
 **Verify**: Set a prompt as template → blue badge appears. Send message → template text appended. Remove template → cleared.
 
 ---
@@ -336,9 +405,11 @@ Toggle Auto-Focus Panel ON. Repeat → panel DOES steal focus.
 ## Test Group 13: MCP Server
 
 ### T13.1 — MCP Settings `[MANUAL]`
+
 **Verify**: Settings modal shows MCP Server section with Start/Stop toggle, status text, URL, Copy button.
 
 ### T13.2 — MCP Start/Stop `[MANUAL]`
+
 **Verify**: Click Start → status "Running", URL shows. Click Stop → status "Stopped".
 
 ---
@@ -348,10 +419,13 @@ Toggle Auto-Focus Panel ON. Repeat → panel DOES steal focus.
 ### T14.1 — Waiting Indicator Sync (Cross-Environment)
 
 **AI Action**: With remote connected, run in Copilot Chat:
+
 ```
 Ask me: "Sync test" using ask_user. Wait for response.
 ```
-**Verify**: *(Feature #8)*
+
+**Verify**: _(Feature #8)_
+
 - Waiting indicator shows in BOTH VS Code and remote
 - Respond from ONE side → indicator disappears on BOTH sides
 
@@ -361,17 +435,21 @@ Ask me: "Sync test" using ask_user. Wait for response.
 **Verify**: Plan review modal and waiting indicator both work independently.
 
 ### T14.3 — Queue Pause State After Full Page Reload `[MANUAL]`
-**Verify**: Pause queue → fully reload remote browser page (F5) → queue should still be paused after re-authentication. *(Fix #7)*
+
+**Verify**: Pause queue → fully reload remote browser page (F5) → queue should still be paused after re-authentication. _(Fix #7)_
 
 ### T14.4 — Stale State Cleanup `[MANUAL]`
+
 **Verify**: If no pending request exists, refreshing remote browser should NOT show any stale question or plan review modal.
 
 ### T14.5 — Multiple Rapid ask_user Calls
 
 **AI Action**: Run in Copilot Chat:
+
 ```
 Ask me 3 questions in sequence using ask_user, one at a time. First: "Question 1?", then "Question 2?", then "Question 3?". Wait for each response before asking the next.
 ```
+
 **Verify**: Each question appears correctly. Responding to one shows the next. No UI glitches.
 
 ---
@@ -379,9 +457,11 @@ Ask me 3 questions in sequence using ask_user, one at a time. First: "Question 1
 ## Test Group 15: Error Handling
 
 ### T15.1 — Network Disconnect `[MANUAL]`
+
 **Verify**: Disconnect network while remote connected → "Disconnected. Reconnecting..." appears. Reconnect → auto-reconnects with state restored.
 
 ### T15.2 — Invalid File Reference `[MANUAL]`
+
 **Verify**: Type `#nonexistentfile.xyz` → no results or "no matches" (no crash).
 
 ---
@@ -415,16 +495,16 @@ After all tests, the AI should present:
 
 ## Fixes Covered by This Checklist
 
-| Fix # | Description | Test IDs |
-|-------|-------------|----------|
-| 1 | Default instruction text | T11.1 |
-| 2 | Choice button UX + re-send bugs | T3.2, T3.3 |
-| 3 | IDE Notification rename | T3.4, T10.3 |
-| 4 | Queue pause button always visible | T2.4 |
-| 5 | Auto-focus panel inversion | T3.5, T10.4 |
-| 6 | Plan review sync | T9.4, T9.5 |
-| 7 | Queue pause state on refresh | T9.5, T14.3 |
-| 8 | AI waiting indicator | T3.7, T5.3, T9.3, T14.1 |
+| Fix # | Description                       | Test IDs                |
+| ----- | --------------------------------- | ----------------------- |
+| 1     | Default instruction text          | T11.1                   |
+| 2     | Choice button UX + re-send bugs   | T3.2, T3.3              |
+| 3     | IDE Notification rename           | T3.4, T10.3             |
+| 4     | Queue pause button always visible | T2.4                    |
+| 5     | Auto-focus panel inversion        | T3.5, T10.4             |
+| 6     | Plan review sync                  | T9.4, T9.5              |
+| 7     | Queue pause state on refresh      | T9.5, T14.3             |
+| 8     | AI waiting indicator              | T3.7, T5.3, T9.3, T14.1 |
 
 ---
 
