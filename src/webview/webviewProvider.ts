@@ -4427,6 +4427,43 @@ export class FlowCommandWebviewProvider
       return choices.length > MAX_CHOICES ? [] : choices;
     }
 
+    // Pattern 4: Comma-separated options with "or" conjunction
+    // Matches patterns like "PostgreSQL, MySQL, or SQLite" after trigger verbs
+    // e.g., "Would you like PostgreSQL, MySQL, or SQLite?"
+    // e.g., "Choose between React, Vue, or Angular"
+    // e.g., "Which do you prefer: Python, JavaScript, or Go?"
+    const commaOrPattern =
+      /(?:choose|pick|select|prefer|like|want|use|between|recommend)\s+(?:between\s+)?(.+?)(?:\?|$)/i;
+    const commaOrMatch = singleLine.match(commaOrPattern);
+    if (commaOrMatch) {
+      const optionsText = commaOrMatch[1];
+      // Split by ", " with optional "or" before last item, or " or "
+      const parts = optionsText
+        .split(/,\s*(?:or\s+)?|\s+or\s+/i)
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0 && s.length <= 60);
+      if (parts.length >= 2 && parts.length <= MAX_CHOICES) {
+        for (const part of parts) {
+          const cleanText = part.replace(/[?!]+$/, "").trim();
+          if (cleanText.length === 0) continue;
+          const shortDisplay =
+            cleanText.length > 20
+              ? cleanText.substring(0, 17) + "..."
+              : cleanText;
+          choices.push({
+            label: cleanText,
+            value: cleanText,
+            shortLabel: shortDisplay,
+          });
+        }
+        if (choices.length >= 2) {
+          return choices.length > MAX_CHOICES ? [] : choices;
+        }
+        // Reset if we didn't get enough valid choices
+        choices.length = 0;
+      }
+    }
+
     return choices;
   }
 

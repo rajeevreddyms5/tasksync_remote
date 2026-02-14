@@ -334,17 +334,17 @@
     approvalContinueBtn.setAttribute("aria-label", "Yes and continue");
     approvalContinueBtn.textContent = "Yes";
 
-    // Cancel button (cancels the question)
+    // End button (ends/cancels the question)
     var approvalCancelBtn = document.createElement("button");
     approvalCancelBtn.className = "approval-btn approval-cancel-btn";
-    approvalCancelBtn.setAttribute("aria-label", "Cancel this question");
-    approvalCancelBtn.textContent = "Cancel";
+    approvalCancelBtn.setAttribute("aria-label", "End this question");
+    approvalCancelBtn.textContent = "End";
     approvalCancelBtn.addEventListener("click", function () {
       if (!pendingToolCall) return;
       hideApprovalModal();
       vscode.postMessage({
         type: "submit",
-        value: "User cancelled this question.",
+        value: "User ended this question.",
         attachments: [],
       });
       if (chatInput) {
@@ -2995,11 +2995,9 @@
       })
       .join("");
 
-    // Add Other and Cancel buttons
+    // Add End button
     buttonsHtml +=
-      '<button class="choice-btn choice-other-btn" data-action="other" title="Type a custom response">Other</button>';
-    buttonsHtml +=
-      '<button class="choice-btn choice-cancel-btn" data-action="cancel" title="Cancel this question">Cancel</button>';
+      '<button class="choice-btn choice-cancel-btn" data-action="cancel" title="End this question">End</button>';
 
     choicesBar.innerHTML =
       '<span class="choices-label">Choose:</span>' +
@@ -3010,9 +3008,7 @@
     // Bind click events to choice buttons
     choicesBar.querySelectorAll(".choice-btn").forEach(function (btn) {
       var action = btn.getAttribute("data-action");
-      if (action === "other") {
-        btn.addEventListener("click", handleChoiceOther);
-      } else if (action === "cancel") {
+      if (action === "cancel") {
         btn.addEventListener("click", handleChoiceCancel);
       } else {
         btn.addEventListener("click", function () {
@@ -3037,24 +3033,8 @@
   }
 
   /**
-   * Handle "Other" button click in choices bar
-   * Shows the text input for custom response
-   */
-  function handleChoiceOther() {
-    // Hide the choices bar but keep pending state
-    var choicesBar = document.getElementById("choices-bar");
-    if (choicesBar) {
-      choicesBar.classList.add("hidden");
-    }
-    // Focus the chat input
-    if (chatInput) {
-      chatInput.focus();
-    }
-  }
-
-  /**
-   * Handle "Cancel" button click in choices bar
-   * Cancels the current question
+   * Handle "End" button click in choices bar
+   * Ends/cancels the current question
    */
   function handleChoiceCancel() {
     if (!pendingToolCall) return;
@@ -3062,10 +3042,10 @@
     // Hide choices bar
     hideChoicesBar();
 
-    // Send cancel response
+    // Send end response
     vscode.postMessage({
       type: "submit",
-      value: "User cancelled this question.",
+      value: "User ended this question.",
       attachments: [],
     });
     if (chatInput) {
@@ -3737,21 +3717,7 @@
             })
             .join("");
 
-          // Add "Other" option with text input
-          optionsHtml +=
-            '<label class="mq-option mq-option-other">' +
-            '<input type="' +
-            inputType +
-            '" name="mq-q' +
-            qIndex +
-            '" value="__other__" data-qindex="' +
-            qIndex +
-            '" data-other="true" />' +
-            '<span class="mq-option-label">Other:</span>' +
-            '<input type="text" class="mq-other-input" id="mq-other-' +
-            qIndex +
-            '" placeholder="Type your answer..." disabled />' +
-            "</label>";
+          // "Other" option removed — freeform input below serves the same purpose
         }
 
         // Freeform input (always shown if allowFreeformInput, or if no options)
