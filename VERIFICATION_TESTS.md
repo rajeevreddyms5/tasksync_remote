@@ -1,318 +1,180 @@
 # Verification Tests for FIXME Fixes
 
-These tests verify the specific fixes made for the FIXME items in TESTING_CHECKLIST.md.
-Run these after building the extension (`npm run compile`).
+## Instructions for AI
+
+You are running interactive verification tests for the FlowCommand extension.
+**Run each test one by one.** For each test:
+1. Read the test description and what was fixed
+2. Execute the prompt yourself (call the tool directly — do NOT tell the user to run it)
+3. Ask the user to verify what they see in the UI
+4. Record PASS or FAIL based on their response
+5. Move to the next test
+
+**Important:** YOU must execute the prompts. Do not ask the user to copy-paste prompts into chat. Use `ask_user` or `plan_review` directly as described in each test.
+
+Build the extension first: `npm run compile`
 
 ---
 
-## Phase 1 Fixes (Commit 8d7545e)
+## Phase 1 Fixes
 
-## VT-1: Queue Pause — No Auto-Consume (Fix for T2.6)
+### VT-1: Queue Pause — No Auto-Consume (Fix for T2.6)
 
-**Root Cause Fixed:** `_handleAddQueuePrompt` was missing `!this._queuePaused` check in the `shouldAutoRespond` condition.
+**What was fixed:** Queue items were auto-consumed even when the queue was paused.
 
-### Steps:
+**Setup (ask user to do this):**
+Ask the user to: Enable queue mode, add 2-3 items, then **pause** the queue.
 
-1. Enable queue mode in FlowCommand panel
-2. Add 2-3 items to the queue
-3. **Pause** the queue (click ⏸️)
-4. Trigger an `ask_user` call:
-   ```
-   Ask me a simple question using ask_user. Do not proceed until I respond.
-   ```
-5. While the question is pending, add another queue item via the queue input
+**Execute:**
+Call `ask_user` with: `question: "Do you see the queue items still in the queue (not auto-consumed)?"`
 
-### Expected:
-
-- The pending question should appear in the panel
-- Queue items should NOT be auto-consumed (they stay in the queue)
-- The new queue item added in step 5 should also NOT be auto-consumed
-- Manual response should work normally
-
-### Edge Cases:
-
-- Rapidly toggle pause/resume while a question is pending → no double-consume
-- Resume queue → first queue item should auto-consume for the pending request
+**Verify with user:** Queue items should NOT be auto-consumed while paused. Ask the user to confirm.
 
 ---
 
-## VT-2: Plan Review Cancel Button (Fix for T5.1)
+### VT-2: Plan Review Cancel Button (Fix for T5.1)
 
-**Root Cause Fixed:** Footer in `planReviewPanel.ts` only had "Approve" and "Request Changes" buttons.
+**What was fixed:** Plan review panel was missing a Cancel button.
 
-### Steps:
+**Execute:**
+Call `plan_review` with a short 3-step plan for building a REST API.
 
-1. Trigger plan_review:
-   ```
-   Create a detailed plan for building a REST API. Use plan_review to present it for my approval.
-   ```
-2. Observe the plan review panel footer
-
-### Expected:
-
-- Three buttons visible: **Cancel** (left, subtle style), **Request Changes** (middle), **Approve** (right, primary)
-- Click "Cancel" → panel closes, AI receives `cancelled` status and stops
-- Cancel button has subtle/muted styling (transparent background, border)
-- Cancel button hover shows reddish highlight
-
-### Edge Cases:
-
-- Cancel with unsaved comments → comments are discarded (not sent)
-- Read-only mode → Cancel button is hidden (along with other action buttons)
+**Verify with user:** Ask: "Do you see three buttons in the plan review footer: Cancel (left, subtle), Request Changes (middle), and Approve (right, primary)? Click Cancel to test it closes the panel."
 
 ---
 
-## VT-3: Waiting Indicator During Plan Review (Fix for T5.3)
+### VT-3: Waiting Indicator During Plan Review (Fix for T5.3)
 
-**Root Cause Fixed:** Plan review didn't send `toolCallPending` state to sidebar webview, so the pulsing indicator never showed.
+**What was fixed:** No pulsing "waiting for input" indicator appeared in the sidebar during plan review.
 
-### Steps:
+**Execute:**
+Call `plan_review` with a short plan (e.g., 2-step plan for setting up a database).
 
-1. Trigger plan_review (same prompt as VT-2)
-2. Look at the FlowCommand sidebar input area
-
-### Expected:
-
-- The orange pulsing "AI is waiting for your input" indicator appears in the sidebar
-- The indicator persists while plan review is open
-- Approving/cancelling plan review → indicator disappears
-
-### Edge Cases:
-
-- If both `ask_user` AND `plan_review` are somehow pending, indicator persists until both resolve
-- If `ask_user` completes while plan review is still open, indicator stays (plan review keeps it alive)
-- `toolCallCancelled` with `__stale__` does NOT remove indicator while plan review is pending
+**Verify with user:** Ask: "Do you see an orange pulsing 'AI is waiting for your input' indicator in the FlowCommand sidebar input area? Does it disappear after you approve/cancel?"
 
 ---
 
-## VT-4: Remote Plan Review Reconnect (Fix for T5.3 — Remote)
+### VT-4: Remote Plan Review Reconnect (Fix for T5.3 — Remote) `[MANUAL]`
 
-**Root Cause Verified:** Existing state restore code is correct. `_activePlanReview` persists and `getRemoteState()` returns it for remote reconnection.
+**What was fixed:** Verified that plan review state restores correctly on remote reconnect.
 
-### Steps:
-
-1. Start remote server and connect from a phone/browser
-2. Trigger plan_review in the IDE
-3. Verify plan review appears on both IDE and remote
-4. Disconnect the remote session (close tab or toggle airplane mode)
-5. Reconnect the remote session (reopen the URL or click refresh)
-
-### Expected:
-
-- Plan review modal should restore on the remote client after reconnect
-- Approve/Reject/Cancel actions should still work after restore
-- Approving on one side (IDE or remote) should close on both
-
-### Edge Cases:
-
-- Plan review completes in IDE while remote is disconnected → on reconnect, no stale modal appears
-- Multiple rapid reconnects → no duplicate modals
+**This test requires manual steps:**
+Ask the user to:
+1. Start the remote server and connect from phone/browser
+2. Tell you when ready, then you'll trigger `plan_review`
+3. Disconnect and reconnect the remote session
+4. Verify the plan review modal restores
 
 ---
 
-## VT-5: History Info Icon (Fix for T8.2)
+### VT-5: History Info Icon (Fix for T8.2)
 
-**Root Cause Fixed:** Long info text "History is stored in VS Code globalStorage/tool-history.json" was always visible, causing button overflow on small screens.
+**What was fixed:** Long info text in history modal caused button overflow. Replaced with ℹ icon + tooltip.
 
-### Steps:
-
-1. Open FlowCommand panel
-2. Click the History icon (📜 or clock icon)
-3. Observe the history modal header
-
-### Expected:
-
-- An info icon (ℹ) appears in the header instead of the full text
-- Hovering over the icon shows the tooltip: "History is stored in VS Code globalStorage/tool-history.json"
-- Clear All (🗑) and Close (✕) buttons are fully visible, not overflowing
-- Works on small panel widths
-
-### Edge Cases:
-
-- Very narrow panel → buttons still accessible, icon doesn't overlap title
+**Execute:**
+Call `ask_user` with: `question: "Open the History modal (clock icon) in the FlowCommand panel. Do you see an ℹ info icon instead of long text? Does hovering show 'History is stored in VS Code globalStorage/tool-history.json'?"`
 
 ---
 
-## VT-6: Template UX Rename (Fix for T12.3)
+### VT-6: Template UX Rename (Fix for T12.3)
 
-**Root Cause Fixed:** Template terminology was confusing. "Set as Template" / "Unset Template" renamed to "Pin" / "Unpin" with clear explanation.
+**What was fixed:** "Set as Template" / "Unset Template" renamed to "Pin" / "Unpin" with help text.
 
-### Steps:
-
-1. Open Reusable Prompts modal (📝 icon or gear → Reusable Prompts)
-2. Observe the help text at the top
-3. Hover over the pin icon (📌) on a prompt card
-4. Click the pin icon to pin a prompt
-5. Observe the indicator near the input area
-6. Send a message
-
-### Expected:
-
-- Help text includes: "📌 Pinned prompts are automatically appended to every message you send."
-- Pin button tooltip: "Pin — auto-append to all messages"
-- After pinning: indicator shows "Pinned: /commandname" near input
-- Sending a message appends the pinned prompt content with `[Auto-appended instructions]` prefix
-- Unpinning shows tooltip: "Unpin — stop auto-appending"
-
-### Edge Cases:
-
-- Pin one prompt, then pin another → first is unpinned, second becomes active
-- Clear pin via the small ✕ button on the indicator → template cleared
+**Execute:**
+Call `ask_user` with: `question: "Open Reusable Prompts modal. Do you see: (1) help text mentioning '📌 Pinned prompts are automatically appended...', (2) pin icon 📌 on prompt cards, (3) tooltip says 'Pin — auto-append to all messages'?"`
 
 ---
 
-## Phase 2 Fixes (Commits 62a0c19, 1847c28)
+## Phase 2 Fixes
 
-## VT-7: Other Button Removed from Choices Bar (Fix for T3.2)
+### VT-7: Other Button Removed from Choices Bar (Fix for T3.2)
 
-**Root Cause Fixed:** "Other" button was redundant — text input is always visible below for custom responses.
+**What was fixed:** Redundant "Other" button removed from choices bar — text input is always visible.
 
-### Steps:
+**Execute:**
+Call `ask_user` with:
+- `question: "Which database would you like to use?"`
+- `choices: [{label: "PostgreSQL", value: "postgresql"}, {label: "MySQL", value: "mysql"}, {label: "SQLite", value: "sqlite"}]`
 
-1. Trigger ask_user with choices:
-   ```
-   Ask me "Which database?" with choices: PostgreSQL, MySQL, SQLite using ask_user with the choices parameter. Wait for my answer.
-   ```
-2. Observe the choices bar
-
-### Expected:
-
-- Choice buttons appear: PostgreSQL, MySQL, SQLite
-- NO "Other" button appears
-- Text input remains visible below for typing custom responses
-- Clicking a choice button sends that value
-
-### Edge Cases:
-
-- All choices have long labels → buttons wrap correctly, no overflow
+**Verify with user:** After they respond, ask: "Did choice buttons appear? Was there NO 'Other' button? Was the text input still visible below for custom responses?"
 
 ---
 
-## VT-8: End/Cancel Button Removed from Choices Bar (Fix for T3.2)
+### VT-8: End/Cancel Button Removed from Choices Bar (Fix for T3.2)
 
-**Root Cause Fixed:** End/Cancel button removed — FlowCommand's own End button handles session termination.
+**What was fixed:** End/Cancel button removed — FlowCommand's own End button handles session termination.
 
-### Steps:
+**Execute:**
+Call `ask_user` with:
+- `question: "Which color theme do you prefer?"`
+- `choices: [{label: "Dark", value: "dark"}, {label: "Light", value: "light"}, {label: "System", value: "system"}]`
 
-1. Same as VT-7 — trigger ask_user with choices
-2. Observe the choices bar buttons
-
-### Expected:
-
-- Only the actual choice buttons appear (e.g., PostgreSQL, MySQL, SQLite)
-- No "End", "Cancel", or "Other" buttons
-- User can still end via FlowCommand's built-in End button or by typing in text input
+**Verify with user:** After they respond, ask: "Did you see ONLY the choice buttons (Dark, Light, System) with no 'End', 'Cancel', or 'Other' buttons?"
 
 ---
 
-## VT-9: End/Cancel Button Removed from Approval Modal (Fix for T3.3)
+### VT-9: End/Cancel Button Removed from Approval Modal (Fix for T3.3)
 
-**Root Cause Fixed:** Approval modal had Cancel/End button which was redundant with FlowCommand's own End button.
+**What was fixed:** Approval modal no longer shows Cancel/End — only Yes and No.
 
-### Steps:
+**Setup:** Ask the user to ensure "Interactive Approval" is enabled in FlowCommand settings.
 
-1. Enable "Interactive Approval" in FlowCommand settings
-2. Trigger an approval question:
-   ```
-   Ask me "Should I proceed with the deployment?" using ask_user. Wait for my answer.
-   ```
-3. Observe the approval bar
+**Execute:**
+Call `ask_user` with: `question: "Should I proceed with the deployment?"`
 
-### Expected:
-
-- Only **Yes** and **No** buttons appear
-- No "Cancel" or "End" button in the approval bar
-- Clicking "Yes" sends approval, clicking "No" focuses text input for custom response
-- Text input remains visible below
-
-### Edge Cases:
-
-- Rapid Yes/No clicks → only first click is processed
-- "No" click → text input focused, user can type rejection reason
+**Verify with user:** Ask: "Did you see ONLY 'Yes' and 'No' buttons in the approval bar? No 'Cancel' or 'End' button?"
 
 ---
 
-## VT-10: Other Option Removed from Multi-Question Modal (Fix for T4.1)
+### VT-10: Other Option Removed from Multi-Question Modal (Fix for T4.1)
 
-**Root Cause Fixed:** "Other" radio/checkbox option in multi-question forms was redundant — freeform text input serves the same purpose.
+**What was fixed:** "Other" radio/checkbox removed from multi-question forms.
 
-### Steps:
+**Execute:**
+Call `ask_user` with the `questions` parameter:
+- Question 1: `header: "Language"`, `question: "What programming language?"`, `options: [{label: "Python"}, {label: "JavaScript"}, {label: "Go"}]`
+- Question 2: `header: "Framework"`, `question: "What framework do you prefer?"` (no options — free text)
 
-1. Trigger multi-question with options:
-   ```
-   Ask me 2 questions at once using ask_user with the questions parameter:
-   1. "What language?" with options: Python, JavaScript, Go
-   2. "What framework?" (free text)
-   Wait for my answers.
-   ```
-2. Observe the multi-question form
-
-### Expected:
-
-- Question 1 shows radio buttons: Python, JavaScript, Go — NO "Other" option
-- Question 2 shows free text input
-- Submit and Cancel buttons appear at the bottom of the form
-- Selecting a radio button and submitting works correctly
-
-### Edge Cases:
-
-- Multi-select question → checkboxes work, no "Other" checkbox
-- allowFreeformInput=true → freeform textarea appears below options
+**Verify with user:** Ask: "In the multi-question form: (1) Did Question 1 show radio buttons for Python/JavaScript/Go with NO 'Other' option? (2) Did Question 2 show a free text input? (3) Were Submit and Cancel buttons at the bottom?"
 
 ---
 
-## VT-11: Comma-Separated Fallback Choice Parsing (Fix for T6.1, T6.2)
+### VT-11: Comma-Separated Fallback Choice Parsing (Fix for T6.1, T6.2)
 
-**Root Cause Fixed:** `_parseChoices` only detected numbered/lettered lists. Added Pattern 4 for comma-separated options with "or" conjunction.
+**What was fixed:** Added fallback parsing for comma-separated options like "X, Y, or Z".
 
-### Steps:
+**Execute:**
+Call `ask_user` with ONLY: `question: "Would you like to use PostgreSQL, MySQL, or SQLite?"` — do NOT pass `choices` parameter. This tests the fallback parser.
 
-1. Trigger ask_user WITHOUT explicit choices parameter (to test fallback parsing):
-   ```
-   Ask me a simple question: "Would you like PostgreSQL, MySQL, or SQLite?" using ask_user without any choices parameter. Wait for my answer.
-   ```
-2. Observe the UI
-
-### Expected:
-
-- The fallback parser detects "PostgreSQL, MySQL, or SQLite" as 3 options
-- Choice buttons appear: PostgreSQL, MySQL, SQLite
-- Clicking a button sends the option text as the response
-
-### Trigger Words That Activate Pattern 4:
-
-- "choose", "pick", "select", "prefer", "like", "want", "use", "between", "recommend"
-- Example: "Choose between React, Vue, or Angular" → 3 buttons
-
-### Edge Cases:
-
-- Only 1 option after split → no buttons shown (needs ≥2)
-- More than 9 options → no buttons shown (MAX_CHOICES limit)
-- Options with special characters → properly escaped in button HTML
-- Question without trigger words → pattern doesn't match, no false positives
+**Verify with user:** Ask: "Did choice buttons appear for PostgreSQL, MySQL, and SQLite even though no explicit choices were passed? The fallback parser should have detected them from the question text."
 
 ---
 
-## VT-12: Updated AI Guidance — Choices Parameter Usage
+### VT-12: Updated AI Guidance — Choices Parameter Usage
 
-**Root Cause Fixed:** modelDescription and instructionText updated with explicit examples for `choices` parameter usage.
+**What was fixed:** modelDescription and instructionText updated with explicit examples.
 
-### Steps:
+**This is a meta-test:** If you (the AI running these tests) correctly used `choices` parameter in VT-7 and VT-8 above, this test passes. The updated guidance in modelDescription should have led you to use `question` + `choices` parameters instead of `questions` array.
 
-1. Reload VS Code to pick up the updated extension
-2. Check that copilot-instructions.md was re-injected (if instructionInjection is enabled)
-3. Trigger a choice question:
-   ```
-   What programming language should I use for this project? Give me 3 options.
-   ```
-4. Observe how the AI invokes ask_user
+**Verify:** Did VT-7 and VT-8 produce choice buttons? If yes → PASS.
 
-### Expected:
+---
 
-- The AI should use `question` + `choices` parameters (not `questions` array)
-- Choice buttons should appear in the UI
-- If the AI still uses `questions` array, the updated guidance may need further tuning
+## Results Summary
 
-### Note:
+After running all tests, present results to the user:
 
-This test depends on AI model behavior which can vary. The guidance improvements increase the likelihood of correct parameter usage but cannot guarantee it 100%.
+| Test | Description | Result |
+|------|-------------|--------|
+| VT-1 | Queue pause no auto-consume | |
+| VT-2 | Plan review cancel button | |
+| VT-3 | Waiting indicator during plan review | |
+| VT-4 | Remote plan review reconnect | |
+| VT-5 | History info icon | |
+| VT-6 | Template UX rename (Pin/Unpin) | |
+| VT-7 | Other button removed from choices | |
+| VT-8 | End/Cancel removed from choices | |
+| VT-9 | End/Cancel removed from approval | |
+| VT-10 | Other removed from multi-question | |
+| VT-11 | Comma-separated fallback parsing | |
+| VT-12 | AI guidance for choices param | |
