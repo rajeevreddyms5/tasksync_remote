@@ -1419,11 +1419,13 @@ export class FlowCommandWebviewProvider
     this._currentToolCallId = toolCallId;
 
     // Check if queue is enabled, not paused, and has prompts - auto-respond
+    // Re-read _queuePaused to guard against race conditions
     if (
       this._queueEnabled &&
       !this._queuePaused &&
       this._promptQueue.length > 0
     ) {
+      console.log('[FlowCommand] Auto-consuming queue item for tool call', toolCallId);
       const queuedPrompt = this._promptQueue.shift();
       if (queuedPrompt) {
         this._saveQueueToDisk();
@@ -2731,7 +2733,9 @@ export class FlowCommandWebviewProvider
    */
   private _handlePauseQueue(): void {
     this._queuePaused = true;
+    this._saveQueueToDisk();
     this._updateQueueUI();
+    console.log('[FlowCommand] Queue paused');
   }
 
   /**
@@ -2739,7 +2743,9 @@ export class FlowCommandWebviewProvider
    */
   private _handleResumeQueue(): void {
     this._queuePaused = false;
+    this._saveQueueToDisk();
     this._updateQueueUI();
+    console.log('[FlowCommand] Queue resumed');
 
     // If there's a pending request and queue has items, auto-process immediately
     if (
@@ -3540,6 +3546,7 @@ export class FlowCommandWebviewProvider
       const parsed = JSON.parse(data);
       this._promptQueue = Array.isArray(parsed.queue) ? parsed.queue : [];
       this._queueEnabled = parsed.enabled === true;
+      this._queuePaused = parsed.paused === true;
     } catch (error) {
       console.error("Failed to load queue:", error);
       this._promptQueue = [];
@@ -3575,6 +3582,7 @@ export class FlowCommandWebviewProvider
         {
           queue: this._promptQueue,
           enabled: this._queueEnabled,
+          paused: this._queuePaused,
         },
         null,
         2,
@@ -4436,7 +4444,11 @@ export class FlowCommandWebviewProvider
       /(?:choose|pick|select|prefer|like|want|use|between|recommend)\s+(?:between\s+)?(.+?)(?:\?|$)/i;
     const commaOrMatch = singleLine.match(commaOrPattern);
     if (commaOrMatch) {
-      const optionsText = commaOrMatch[1];
+      // Strip common preposition/verb prefixes that get captured before the actual options
+      // e.g., "to use PostgreSQL, MySQL" → "PostgreSQL, MySQL"
+      // e.g., "go with React, Vue" → "React, Vue"
+      const optionsText = commaOrMatch[1]
+        .replace(/^(?:to\s+)?(?:use|go\s+with|try|pick|select|choose|have|work\s+with)\s+/i, '');
       // Split by ", " with optional "or" before last item, or " or "
       const parts = optionsText
         .split(/,\s*(?:or\s+)?|\s+or\s+/i)

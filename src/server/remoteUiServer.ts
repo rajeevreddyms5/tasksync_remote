@@ -3279,6 +3279,14 @@ self.addEventListener('fetch', event => {
                             title: state.pendingPlanReview.title,
                             plan: state.pendingPlanReview.plan
                         });
+                    } else {
+                        // Close any stale plan review modal that may have missed
+                        // the planReviewCompleted broadcast (e.g., during brief disconnect)
+                        window.dispatchVSCodeMessage({
+                            type: 'planReviewCompleted',
+                            reviewId: '__stale__',
+                            status: 'cancelled'
+                        });
                     }
                 }
             }

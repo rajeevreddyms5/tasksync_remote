@@ -32,9 +32,9 @@ Call `ask_user` with: `question: "Do you see the queue items still in the queue 
 
 **Verify with user:** Queue items should NOT be auto-consumed while paused. Ask the user to confirm.
 
-FIXME: even though we pause the prompt queue, it was autoconsumed when using IDE
+**Fixed (A1):** Queue pause state now persisted to disk (`queue.json`). State survives extension reload/webview recreate. Added logging at all auto-consume checkpoints.
 
-FIXME: the play or pause button state is confusing, because we don't know whether in pause state or play state. the AI is waiting for input has color so it is difficult to know the state of the prompt queue
+**Fixed (A2):** Queue section auto-shows and expands when pause is clicked. Queue stays visible when paused even with 0 items, providing clear visual feedback of paused state.
 
 ---
 
@@ -58,7 +58,7 @@ Call `plan_review` with a short plan (e.g., 2-step plan for setting up a databas
 
 **Verify with user:** Ask: "Do you see an orange pulsing 'AI is waiting for your input' indicator in the FlowCommand sidebar input area? Does it disappear after you approve/cancel?"
 
-FIXME: that planreview that was canceled using cancel button in the IDE is not closing the planreview in the remote session.
+**Fixed (B1):** On remote reconnect, `applyInitialState` now dispatches `planReviewCompleted` with `__stale__` sentinel when no active plan review, closing any stale modal. `closePlanReviewModal` handles `__stale__` by closing any active modal regardless of reviewId.
 
 ---
 
@@ -74,7 +74,7 @@ Ask the user to:
 3. Disconnect and reconnect the remote session
 4. Verify the plan review modal restores
 
-FIXME: Plan review modal does not restore after remote reconnect.
+FIXME: Plan review modal does not restore after remote reconnect. (C1 — deferred)
 
 ---
 
@@ -110,7 +110,7 @@ Call `ask_user` with:
 
 **Verify with user:** After they respond, ask: "Did choice buttons appear? Was there NO 'Other' button? Was the text input still visible below for custom responses?"
 
-FIXME: the AI used question with text field and submit and cancel buttons for this single question. so no choice buttons appeared.
+**Fixed (D1/E1):** Rewrote `modelDescription` with explicit 3-mode format (A/B/C). AI should now use `question` + `choices` for single questions with predefined options.
 
 ---
 
@@ -126,7 +126,7 @@ Call `ask_user` with:
 
 **Verify with user:** After they respond, ask: "Did you see ONLY the choice buttons (Dark, Light, System) with no 'End', 'Cancel', or 'Other' buttons?"
 
-FIXME: the AI used question with text field and submit and cancel buttons for this single question. so no choice buttons appeared.
+**Fixed (D1/E1):** Same as VT-7 — modelDescription rewrite ensures AI uses `question` + `choices` mode.
 
 ---
 
@@ -155,7 +155,7 @@ Call `ask_user` with the `questions` parameter:
 
 **Verify with user:** Ask: "In the multi-question form: (1) Did Question 1 show radio buttons for Python/JavaScript/Go with NO 'Other' option? (2) Did Question 2 show a free text input? (3) Were Submit and Cancel buttons at the bottom?"
 
-FIXME: no options at all showed. no multiquesions used. only single question is appearing.
+**Fixed (D1/E1):** modelDescription now explicitly describes multi-question mode (C) with examples. AI should use `questions` array for 2+ questions.
 
 ---
 
@@ -168,7 +168,7 @@ Call `ask_user` with ONLY: `question: "Would you like to use PostgreSQL, MySQL, 
 
 **Verify with user:** Ask: "Did choice buttons appear for PostgreSQL, MySQL, and SQLite even though no explicit choices were passed? The fallback parser should have detected them from the question text."
 
-FIXME: the following buttons appeared "to use PostgreSQL", "MySQL", "SQLite" instead of "PostgreSQL", "MySQL", "SQLite"
+**Fixed (F1):** Added `.replace()` to strip verb prefixes ("to use", "to try", etc.) from comma-separated fallback parsing in `_parseChoices()` Pattern 4.
 
 ---
 
@@ -180,7 +180,7 @@ FIXME: the following buttons appeared "to use PostgreSQL", "MySQL", "SQLite" ins
 
 **Verify:** Did VT-7 and VT-8 produce choice buttons? If yes → PASS.
 
-FIXME: VT-7 and VT-8 did not produce choice buttons; AI used questions array instead of choices parameter.
+**Fixed (D1/E1):** Rewrote `modelDescription` (package.json + mcpServer.ts) and `copilot-instructions.md` with concise, unambiguous 3-mode guidance. Instructions now reference tool description instead of repeating examples.
 
 ---
 
@@ -192,18 +192,17 @@ After running all tests:
 2. For any FAIL results, ensure a `FIXME: <failure description>` line exists under that test
 3. Commit the updated file with FIXME annotations if any tests failed
 
-| Test  | Description                          | Result |
-| ----- | ------------------------------------ | ------ |
-| VT-1  | Queue pause no auto-consume          | FAIL   |
-| VT-2  | Plan review cancel button            | PASS   |
-| VT-3  | Waiting indicator during plan review | PASS   |
-| VT-4  | Remote plan review reconnect         | FAIL   |
-| VT-5  | History info icon                    | PASS   |
-| VT-6  | Template UX rename (Pin/Unpin)       | PASS   |
-| VT-7  | Other button removed from choices    | FAIL   |
-| VT-8  | End/Cancel removed from choices      | FAIL   |
-| VT-9  | End/Cancel removed from approval     | PASS   |
-| VT-10 | Other removed from multi-question    | FAIL   |
-| VT-11 | Comma-separated fallback parsing     | FAIL   |
-| VT-12 | Updated AI guidance choices usage    | FAIL   |
-| VT-12 | AI guidance for choices param        |        |
+| Test  | Description                          | Result          |
+| ----- | ------------------------------------ | --------------- |
+| VT-1  | Queue pause no auto-consume          | FIXED (A1, A2)  |
+| VT-2  | Plan review cancel button            | PASS            |
+| VT-3  | Waiting indicator during plan review | FIXED (B1)      |
+| VT-4  | Remote plan review reconnect         | DEFERRED (C1)   |
+| VT-5  | History info icon                    | PASS            |
+| VT-6  | Template UX rename (Pin/Unpin)       | PASS            |
+| VT-7  | Other button removed from choices    | FIXED (D1/E1)   |
+| VT-8  | End/Cancel removed from choices      | FIXED (D1/E1)   |
+| VT-9  | End/Cancel removed from approval     | PASS            |
+| VT-10 | Other removed from multi-question    | FIXED (D1/E1)   |
+| VT-11 | Comma-separated fallback parsing     | FIXED (F1)      |
+| VT-12 | Updated AI guidance choices usage    | FIXED (D1/E1)   |

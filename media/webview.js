@@ -1557,8 +1557,9 @@
 
   function updateQueueVisibility() {
     if (!queueSection) return;
-    // Show queue section only when queue mode is enabled AND there are items in the queue
-    var shouldHide = !queueEnabled || promptQueue.length === 0;
+    // Show queue section when queue mode is enabled AND (there are items OR queue is paused)
+    // Keeping the section visible while paused ensures user can see the "Paused" state
+    var shouldHide = !queueEnabled || (promptQueue.length === 0 && !queuePaused);
     queueSection.classList.toggle("hidden", shouldHide);
   }
 
@@ -1596,6 +1597,12 @@
       vscode.postMessage({ type: "resumeQueue" });
     } else {
       vscode.postMessage({ type: "pauseQueue" });
+      // When pausing, ensure queue section is visible and expanded
+      // so user can clearly see the "Paused" state
+      if (queueSection) {
+        queueSection.classList.remove("hidden");
+        queueSection.classList.remove("collapsed");
+      }
     }
   }
 
@@ -3538,9 +3545,16 @@
       "activePlanReview:",
       activePlanReview ? activePlanReview.reviewId : null,
     );
-    if (!activePlanReview || activePlanReview.reviewId !== reviewId) {
+    if (!activePlanReview) {
       console.log(
-        "[FlowCommand] closePlanReviewModal: no matching modal to close",
+        "[FlowCommand] closePlanReviewModal: no active modal to close",
+      );
+      return;
+    }
+    // __stale__ sentinel: close any active plan review (used on reconnect cleanup)
+    if (reviewId !== "__stale__" && activePlanReview.reviewId !== reviewId) {
+      console.log(
+        "[FlowCommand] closePlanReviewModal: reviewId mismatch, not closing",
       );
       return;
     }
