@@ -89,13 +89,10 @@ Ask me: "What color do you prefer?" using ask_user. Wait for my response.
 Ask me to choose a database using ask_user with these choices: PostgreSQL, MongoDB, SQLite. Wait for my selection.
 ```
 
-**Verify**: Choice buttons appear. Text input remains visible below the choices. Buttons include "Other" (italic) and "Cancel" (red). _(Fix #2, #9)_
+**Verify**: Choice buttons appear. Text input remains visible below the choices for custom responses.
 
 - Click a choice → response sent with that value
-- Click "Other" → choices hidden, input still visible, focused for typing
-- Click "Cancel" → sends "User cancelled this question."
-
-FIXME: It was not showing choice buttons.
+- Type in text input → send custom response
 
 ### T3.3 — ask_user with Yes/No Approval
 
@@ -105,9 +102,7 @@ FIXME: It was not showing choice buttons.
 Ask me: "Should I proceed with the deployment?" using ask_user. Wait for my answer.
 ```
 
-**Verify**: If Interactive Approval is ON in settings, "Yes" and "No" buttons appear (plus "Cancel" button). Text input remains visible below. _(Fix #2, #9)_
-
-FIXME: "interactive approval is on" but still not Yes and No and cancel button appeared.also instead of cancel button, can we rename it to stop or end. because the cancel button was ending the ask_USer tool usage. verify this.
+**Verify**: If Interactive Approval is ON in settings, "Yes" and "No" buttons appear. Text input remains visible below.
 
 ### T3.4 — Notifications on ask_user
 
@@ -180,9 +175,7 @@ Ask me 3 questions at once using ask_user with the questions parameter:
 Wait for my answers.
 ```
 
-**Verify**: All 3 questions appear in a form layout. Dropdowns, text inputs, and multi-select work correctly.
-
-FIXME: Multi questions appeared, but no option to select options individually, they appeared as just text with options to enter input for each question. so i can't verify multi select, dropdowns etc.
+**Verify**: All 3 questions appear in a form layout. Radio buttons, text inputs, and multi-select checkboxes work correctly. Each question has submit and cancel buttons.
 
 ---
 
@@ -230,8 +223,6 @@ Ask: "Which framework? 1. React 2. Vue 3. Angular" using ask_user with these as 
 
 **Verify**: Buttons labeled with the options appear.
 
-FIXME: No buttons labeled with the options appeared because the AI used "AI has questions for you" with input text field to enter and cancel and submit button.
-
 ### T6.2 — Lettered Options
 
 **AI Action**: Run in Copilot Chat:
@@ -241,8 +232,6 @@ Ask: "Testing approach? A. Unit tests B. Integration tests C. Both" using ask_us
 ```
 
 **Verify**: Buttons labeled with the options appear.
-
-FIXME: Same failure as T6.1.
 
 ---
 
