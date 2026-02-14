@@ -95,6 +95,8 @@ Ask me to choose a database using ask_user with these choices: PostgreSQL, Mongo
 - Click "Other" → choices hidden, input still visible, focused for typing
 - Click "Cancel" → sends "User cancelled this question."
 
+FIXME: It was not showing choice buttons.
+
 ### T3.3 — ask_user with Yes/No Approval
 
 **AI Action**: Run in Copilot Chat:
@@ -104,6 +106,8 @@ Ask me: "Should I proceed with the deployment?" using ask_user. Wait for my answ
 ```
 
 **Verify**: If Interactive Approval is ON in settings, "Yes" and "No" buttons appear (plus "Cancel" button). Text input remains visible below. _(Fix #2, #9)_
+
+FIXME: "interactive approval is on" but still not Yes and No and cancel button appeared.also instead of cancel button, can we rename it to stop or end. because the cancel button was ending the ask_USer tool usage. verify this.
 
 ### T3.4 — Notifications on ask_user
 
@@ -117,6 +121,9 @@ Ask me: "Are you still there?" using ask_user. Wait for my response.
 
 - Sound plays (880Hz beep)
 - IDE notification popup appears labeled "IDE Notification" _(Fix #3)_
+
+NOTE: Now appeared interactive buttons.
+
 - Panel auto-focuses (steals focus when Auto-Focus is ON, panel stays hidden when OFF) _(Fix #5)_
 
 ### T3.5 — Auto-Focus Panel Inversion Check
@@ -175,6 +182,8 @@ Wait for my answers.
 
 **Verify**: All 3 questions appear in a form layout. Dropdowns, text inputs, and multi-select work correctly.
 
+FIXME: Multi questions appeared, but no option to select options individually, they appeared as just text with options to enter input for each question. so i can't verify multi select, dropdowns etc.
+
 ---
 
 ## Test Group 5: Plan Review
@@ -221,6 +230,8 @@ Ask: "Which framework? 1. React 2. Vue 3. Angular" using ask_user with these as 
 
 **Verify**: Buttons labeled with the options appear.
 
+FIXME: No buttons labeled with the options appeared because the AI used "AI has questions for you" with input text field to enter and cancel and submit button.
+
 ### T6.2 — Lettered Options
 
 **AI Action**: Run in Copilot Chat:
@@ -230,6 +241,8 @@ Ask: "Testing approach? A. Unit tests B. Integration tests C. Both" using ask_us
 ```
 
 **Verify**: Buttons labeled with the options appear.
+
+FIXME: Same failure as T6.1.
 
 ---
 

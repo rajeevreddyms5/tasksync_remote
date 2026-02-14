@@ -595,8 +595,14 @@ export class FlowCommandWebviewProvider
       title,
       plan,
     };
-    // Only broadcast to remote clients - dedicated VS Code panel handles IDE
+    // Broadcast to remote clients - dedicated VS Code panel handles IDE
     this._broadcastCallback?.(message);
+    // Notify sidebar webview to show waiting indicator
+    this._view?.webview.postMessage({
+      type: "planReviewPending" as const,
+      reviewId,
+      title,
+    });
   }
 
   /**
@@ -2576,6 +2582,7 @@ export class FlowCommandWebviewProvider
     // This prevents the window between push and findIndex where queue could be modified
     const shouldAutoRespond =
       this._queueEnabled &&
+      !this._queuePaused &&
       this._currentToolCallId &&
       this._pendingRequests.has(this._currentToolCallId);
 

@@ -18,6 +18,7 @@
   let currentSessionCalls = []; // Current session tool calls (shown in chat)
   let persistedHistory = []; // Past sessions history (shown in modal)
   let pendingToolCall = null;
+  let planReviewPendingId = null; // Track active plan review for waiting indicator
   let isProcessingResponse = false; // True when AI is processing user's response
   let processingTimeoutId = null; // Timer to auto-clear stuck processing state
   const PROCESSING_TIMEOUT_MS = 30000; // 30 seconds before auto-clearing processing state
@@ -226,12 +227,12 @@
     titleSpan.textContent = "History";
     modalHeader.appendChild(titleSpan);
 
-    // Info text - left aligned after title
-    var infoSpan = document.createElement("span");
-    infoSpan.className = "history-modal-info";
-    infoSpan.textContent =
+    // Info icon with tooltip
+    var infoIcon = document.createElement("span");
+    infoIcon.className = "history-modal-info-icon codicon codicon-info";
+    infoIcon.title =
       "History is stored in VS Code globalStorage/tool-history.json";
-    modalHeader.appendChild(infoSpan);
+    modalHeader.appendChild(infoIcon);
 
     // Clear all button (icon only)
     historyModalClearAll = document.createElement("button");
@@ -625,7 +626,7 @@
     var hint = document.createElement("div");
     hint.className = "prompts-modal-hint";
     hint.innerHTML =
-      "Type <code>/</code> in the input to use a prompt. Prompts are expanded before sending.";
+      'Type <code>/</code> in the input to use a prompt. Prompts are expanded before sending.<br/><span class="codicon codicon-pinned" style="font-size:11px"></span> <em>Pinned prompts are automatically appended to every message you send.</em>';
     content.appendChild(hint);
 
     // Add/Edit form (moved BEFORE list for better UX)
@@ -1799,10 +1800,25 @@
         clearProcessingState();
         break;
       case "planReviewPending":
-        showPlanReviewModal(message.reviewId, message.title, message.plan);
+        // Show waiting indicator in sidebar (plan review opens in dedicated IDE panel)
+        if (message.plan) {
+          // Remote/full plan review modal (for remote clients)
+          showPlanReviewModal(message.reviewId, message.title, message.plan);
+        } else {
+          // Sidebar: just show waiting indicator, no modal
+          planReviewPendingId = message.reviewId;
+          document.body.classList.add("has-pending-toolcall");
+        }
         break;
       case "planReviewCompleted":
         closePlanReviewModal(message.reviewId);
+        if (planReviewPendingId === message.reviewId) {
+          planReviewPendingId = null;
+          // Only remove class if no other pending tool call is active
+          if (!pendingToolCall) {
+            document.body.classList.remove("has-pending-toolcall");
+          }
+        }
         break;
       case "multiQuestionPending":
         showMultiQuestionModal(message.requestId, message.questions);
@@ -1826,7 +1842,7 @@
       pendingMessage.innerHTML = "";
     }
     // Also clear any stale pending tool call state
-    if (!pendingToolCall) {
+    if (!pendingToolCall && !planReviewPendingId) {
       document.body.classList.remove("has-pending-toolcall");
     }
   }
@@ -1937,7 +1953,9 @@
     pendingToolCall = null;
 
     // Remove pending class to re-enable session switching UI
-    document.body.classList.remove("has-pending-toolcall");
+    if (!planReviewPendingId) {
+      document.body.classList.remove("has-pending-toolcall");
+    }
 
     // Hide approval modal and choices bar when tool call completes
     hideApprovalModal();
@@ -1986,7 +2004,9 @@
     }
 
     // Remove pending class to re-enable normal UI
-    document.body.classList.remove("has-pending-toolcall");
+    if (!planReviewPendingId) {
+      document.body.classList.remove("has-pending-toolcall");
+    }
 
     // Hide approval modal and choices bar
     hideApprovalModal();
@@ -3610,7 +3630,9 @@
     }
     activePlanReview = null;
     // Clear pending state so the waiting indicator hides
-    document.body.classList.remove("has-pending-toolcall");
+    if (!pendingToolCall && !planReviewPendingId) {
+      document.body.classList.remove("has-pending-toolcall");
+    }
     console.log("[FlowCommand] closePlanReviewModal: modal closed");
   }
 
@@ -3938,7 +3960,9 @@
     }
 
     // Remove pending class
-    document.body.classList.remove("has-pending-toolcall");
+    if (!planReviewPendingId) {
+      document.body.classList.remove("has-pending-toolcall");
+    }
 
     activeMultiQuestion = null;
   }
@@ -3962,8 +3986,8 @@
         var promptPreview =
           p.prompt.length > 60 ? p.prompt.substring(0, 60) + "..." : p.prompt;
         var templateBtnTitle = p.isTemplate
-          ? "Unset Template"
-          : "Set as Template";
+          ? "Unpin — stop auto-appending"
+          : "Pin — auto-append to all messages";
         var templateBtnClass = p.isTemplate
           ? "pm-template-btn active"
           : "pm-template-btn";
@@ -4174,7 +4198,7 @@
     var nameSpan = indicator.querySelector(".template-name");
 
     if (activeTemplate) {
-      nameSpan.textContent = "Template: /" + activeTemplate.name;
+      nameSpan.textContent = "Pinned: /" + activeTemplate.name;
       indicator.classList.remove("hidden");
     } else {
       indicator.classList.add("hidden");
