@@ -476,14 +476,14 @@ When running these tests:
 | T3   | X or Y? detection (PASS/FAIL not Yes/No) | ✅ PASS | Auto-detected PASS/FAIL buttons instead of Yes/No                |
 | T4   | Comma-separated options detection        | ✅ PASS | React, Vue, Angular detected and displayed as buttons            |
 | T5   | Multi-question form (Mode C valid)       | ✅ PASS | Modal form with radio buttons and text input rendered correctly  |
-| T6   | Auto-conversion single-item questions    | ✅ PASS | Tool correctly rejects single-item arrays (validation working)   |
+| T6   | Auto-conversion single-item questions    | ❌ FAIL | Should auto-convert to Mode A; instead rejects with error        |
 | T7   | Context with brief response              | ✅ PASS | Context displayed above question with Yes/No buttons             |
 | T8   | Cancel handling                          | ✅ PASS | No re-prompting after user response                              |
-| T9   | Numbered options (1. 2. 3.)              | ✅ PASS | Fixed: literal \n now normalized to actual newlines              |
-| T10  | Lettered options (A. B. C.)              | ✅ PASS | Works correctly with actual newlines in question text            |
+| T9   | Numbered options (1. 2. 3.)              | ✅ PASS | **FIXED!** Shows full text as clickable buttons                  |
+| T10  | Lettered options (A. B. C.)              | ✅ PASS | Shows full text instead of just letters                          |
 | T11  | Bullet point options                     | ✅ PASS | - Bullet format detected and displayed as buttons                |
-| T12  | Inline numbered options                  | ✅ PASS | 1 - 2 - 3 format detected and displayed as buttons               |
-| T13  | Option X: format                         | ✅ PASS | Option A/B/C format detected and displayed as buttons            |
+| T12  | Inline numbered options                  | ✅ PASS | Shows full options as clickable buttons (1 - 2 - 3)              |
+| T13  | Option X: format                         | ❌ FAIL | **NEW ISSUE**: Only Option A and B detected; Option C missing    |
 | T14  | Multi-question checkboxes                | ✅ PASS | Checkboxes for multiSelect:true, radio buttons for single-select |
 | T15  | Short approval question                  | ✅ PASS | Yes/No approval buttons displayed                                |
 | T16  | Emoji numbered options                   | ✅ PASS | Shows full text options instead of emoji numbers (acceptable)    |
@@ -492,12 +492,18 @@ When running these tests:
 | T19  | Freeform + options combo                 | ✅ PASS | Both option buttons and text input field displayed               |
 | T20  | Empty submit handling                    | ✅ PASS | Tool accepts responses gracefully                                |
 
-### **Overall Score: 20/20 (100%)**
+### **Overall Score: 18/20 (90%)**
 
-### Issues Identified:
+### Issues to Fix:
 
-1. **T9 Fixed in v2.0.5**: Literal `\n` escape sequences are now normalized to actual newlines before parsing.
-2. **T16 Note**: Emoji-prefixed options render as full text buttons rather than extracting just the emoji; still functional and acceptable.
+1. **T6 FAILING** ❌ - Auto-conversion logic missing. Single-item `questions` array should convert to Mode A (choice buttons) instead of rejecting with error.
+2. **T9 FIXED** ✅ - Numbered options now work correctly.
+3. **T13 NEW ISSUE** ❌ - "Option C: Use both" not detected. Only Options A and B appear as buttons. Regex pattern for "Option X:" format needs fixing.
+
+### Additional Improvements Needed:
+
+**FIXME: Input Field Auto-Focus**: When FlowCommand panel is in view (when the Auto-Focus is ON), the input field should be ready to accept typing immediately without requiring the user to click on it first. Currently, users must click the input field before they can start typing. This should be fixed to allow immediate typing when the panel is visible and a question is pending.
+**FIXME: End Button Color**: The End button in FlowCommand currently shows yellow color on hover. Since "End" is a significant/destructive action (terminates the session), it should be marked in red to better signify the terminal nature of the action and prevent accidental clicks.
 
 ---
 
