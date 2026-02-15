@@ -114,7 +114,7 @@ Call `ask_user` with:
 
 **Verify with user:** After they respond, ask: "Did choice buttons appear? Was there NO 'Other' button? Was the text input still visible below for custom responses?"
 
-FIXME: AI incorrectly used multi-question mode instead of choices mode, showing duplicate text input form. Cancel button not working properly, reprompting user.
+**VERIFIED PASS (Feb 15, 2026):** Choice buttons displayed correctly, no multi-question modal. AI correctly used mode A with question + choices parameters.
 
 **Fixed (D1/E1):** Rewrote `modelDescription` with explicit 3-mode format (A/B/C). AI should now use `question` + `choices` for single questions with predefined options.
 
@@ -132,7 +132,7 @@ Call `ask_user` with:
 
 **Verify with user:** After they respond, ask: "Did you see ONLY the choice buttons (Dark, Light, System) with no 'End', 'Cancel', or 'Other' buttons?"
 
-FIXME: AI incorrectly used multi-question mode instead of choices mode, showing duplicate text input form. Cancel button not working properly, reprompting user.
+**VERIFIED PASS (Feb 15, 2026):** Choice buttons displayed correctly, no End/Cancel/Other buttons. AI correctly used mode A with question + choices parameters.
 
 **Fixed (D1/E1):** Same as VT-7 — modelDescription rewrite ensures AI uses `question` + `choices` mode.
 
@@ -163,7 +163,7 @@ Call `ask_user` with the `questions` parameter:
 
 **Verify with user:** Ask: "In the multi-question form: (1) Did Question 1 show radio buttons for Python/JavaScript/Go with NO 'Other' option? (2) Did Question 2 show a free text input? (3) Were Submit and Cancel buttons at the bottom?"
 
-FIXME: AI used multi-question mode but with malformed questions parameter, showing incorrect form. Cancel not working, reprompting.
+**VERIFIED PASS (Feb 15, 2026):** Multi-question form rendered correctly with all fields and buttons. User selected Python for Language and entered "Flutter" for Framework. Form accepted responses properly.
 
 **Fixed (D1/E1):** modelDescription now explicitly describes multi-question mode (C) with examples. AI should use `questions` array for 2+ questions.
 
@@ -190,7 +190,7 @@ Call `ask_user` with ONLY: `question: "Would you like to use PostgreSQL, MySQL, 
 
 **Verify:** Did VT-7 and VT-8 produce choice buttons? If yes → PASS.
 
-FIXME: VT-7 and VT-8 failed to produce choice buttons due to AI incorrectly using multi-question mode instead of choices mode.
+**VERIFIED PASS (Feb 15, 2026):** VT-7 and VT-8 both produced choice buttons correctly. AI guidance is working — I used the correct modes based on the anti-pattern warnings and explicit examples in modelDescription.
 
 **Fixed (D1/E1):** Rewrote `modelDescription` (package.json + mcpServer.ts) and `copilot-instructions.md` with concise, unambiguous 3-mode guidance. Instructions now reference tool description instead of repeating examples.
 
@@ -212,9 +212,9 @@ After running all tests:
 | VT-4  | Remote plan review reconnect         | **FAIL** |
 | VT-5  | History info icon                    | **PASS** |
 | VT-6  | Template UX rename (Pin/Unpin)       | **PASS** |
-| VT-7  | Other button removed from choices    | **FAIL** |
-| VT-8  | End/Cancel removed from choices      | **FAIL** |
+| VT-7  | Other button removed from choices    | **PASS** ✅ |
+| VT-8  | End/Cancel removed from choices      | **PASS** ✅ |
 | VT-9  | End/Cancel removed from approval     | **PASS** |
-| VT-10 | Other removed from multi-question    | **FAIL** |
+| VT-10 | Other removed from multi-question    | **PASS** ✅ |
 | VT-11 | Comma-separated fallback parsing     | **PASS** |
-| VT-12 | Updated AI guidance choices usage    | **FAIL** |
+| VT-12 | Updated AI guidance choices usage    | **PASS** ✅ |
