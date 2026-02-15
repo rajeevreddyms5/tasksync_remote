@@ -4018,6 +4018,19 @@ export class FlowCommandWebviewProvider
     const choices: ParsedChoice[] = [];
     let match;
 
+    // Normalize literal escape sequences to actual characters.
+    // AI models sometimes send "\n" as a literal two-character sequence (backslash + n)
+    // instead of an actual newline, which breaks line-based pattern detection.
+    // SAFETY: Only normalize when text has NO real newlines but contains literal \n.
+    // This avoids corrupting text that already has proper newlines or contains
+    // legitimate backslash-n sequences (e.g., Windows paths like C:\new_folder).
+    if (!text.includes("\n") && text.includes("\\n")) {
+      text = text.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
+    }
+    if (!text.includes("\t") && text.includes("\\t")) {
+      text = text.replace(/\\t/g, "\t");
+    }
+
     // Maximum number of choices to show as buttons
     // If more options detected, return empty array (show only text input)
     const MAX_CHOICES = 9;
