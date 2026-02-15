@@ -40,7 +40,11 @@ Call `ask_user` with: `question: "Do you see the queue items still in the queue 
 
 **VERIFIED PASS (Feb 15, 2026):** Queue items remain in queue when paused (not auto-consumed). Test passed with updated extension v2.0.3. Both IDE and remote sessions now have consistent queue pause behavior.
 
-**Fixed (B1 — Remote Session):** Added queue pause check to `_handleSubmit()` in webviewProvider.ts (line 1969). When queue is paused and remote user clicks send, prompt routes to queue instead of processing immediately. Removes behavior discrepancy between IDE and remote modes.
+**Test Details:**
+- IDE mode: ✅ Queue paused, prompts accumulate in queue
+- Remote mode: ✅ Queue paused, prompts accumulate in queue (FIXED)
+
+**Fixed (B1 — Remote Session):** Added queue pause check to `_handleSubmit()` in webviewProvider.ts (line 1969). When queue is paused and remote user clicks send, prompt routes to queue instead of processing immediately. Removes behavior discrepancy between IDE and remote modes. **Verified working in remote session test.**
 
 ---
 
