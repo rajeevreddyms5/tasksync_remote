@@ -40,6 +40,10 @@ Call `ask_user` with: `question: "Do you see the queue items still in the queue 
 
 **VERIFIED PASS (Feb 15, 2026):** Queue items remain in queue when paused (not auto-consumed). Test passed with updated extension v2.0.3.
 
+**FIXME (New Remote Issue):** When using remote session, prompt queue items are auto-consumed when clicking send (but works correctly in IDE). Queue pause behavior works correctly in IDE mode.
+
+FIXME (New Remote Issue): When using remote session, prompt queue items are auto-consumed when clicking send (but works correctly in IDE). Queue pause works correctly in IDE mode.
+
 ---
 
 ### VT-2: Plan Review Cancel Button (Fix for T5.1)
@@ -51,6 +55,8 @@ Call `plan_review` with a short 3-step plan for building a REST API.
 
 **Verify with user:** Ask: "Do you see three buttons in the plan review footer: Cancel (left, subtle), Request Changes (middle), and Approve (right, primary)? Click Cancel to test it closes the panel."
 
+**VERIFIED PASS (Feb 15, 2026):** Cancel button is present and working. Plan review panel closed successfully when canceled.
+
 ---
 
 ### VT-3: Waiting Indicator During Plan Review (Fix for T5.3)
@@ -61,6 +67,8 @@ Call `plan_review` with a short 3-step plan for building a REST API.
 Call `plan_review` with a short plan (e.g., 2-step plan for setting up a database).
 
 **Verify with user:** Ask: "Do you see an orange pulsing 'AI is waiting for your input' indicator in the FlowCommand sidebar input area? Does it disappear after you approve/cancel?"
+
+**VERIFIED PASS (Feb 15, 2026):** Orange pulsing waiting indicator visible during plan review. Disappears after cancel/approve action.
 
 **Fixed (B1):** On remote reconnect, `applyInitialState` now dispatches `planReviewCompleted` with `__stale__` sentinel when no active plan review, closing any stale modal. `closePlanReviewModal` handles `__stale__` by closing any active modal regardless of reviewId.
 
@@ -89,6 +97,8 @@ FIXME: Plan review modal does NOT restore after remote reconnect despite fix att
 **Execute:**
 Call `ask_user` with: `question: "Open the History modal (clock icon) in the FlowCommand panel. Do you see an ℹ info icon instead of long text? Does hovering show 'History is stored in VS Code globalStorage/tool-history.json'?"`
 
+**VERIFIED PASS (Feb 15, 2026):** Info icon (ℹ) displays correctly in History modal. Tooltip shows history storage location.
+
 ---
 
 ### VT-6: Template UX Rename (Fix for T12.3)
@@ -96,7 +106,9 @@ Call `ask_user` with: `question: "Open the History modal (clock icon) in the Flo
 **What was fixed:** "Set as Template" / "Unset Template" renamed to "Pin" / "Unpin" with help text.
 
 **Execute:**
-Call `ask_user` with: `question: "Open Reusable Prompts modal. Do you see: (1) help text mentioning '📌 Pinned prompts are automatically appended...', (2) pin icon 📌 on prompt cards, (3) tooltip says 'Pin — auto-append to all messages'?"`
+Call `ask_user` with: `question: "Open Reusable Prompts modal. Do you see: (1) help text mentioning '📌 Pinned prompts are automatically appended...', (2) pin icon 📌 on prompt cards, (3) tooltip says 'Pin — auto-append to all messages'?"
+
+**VERIFIED PASS (Feb 15, 2026):** Pin/Unpin UX working correctly. Help text visible, pin icon displays, tooltip shows pin auto-append functionality.`
 
 ---
 
@@ -149,6 +161,8 @@ Call `ask_user` with: `question: "Should I proceed with the deployment?"`
 
 **Verify with user:** Ask: "Did you see ONLY 'Yes' and 'No' buttons in the approval bar? No 'Cancel' or 'End' button?"
 
+**VERIFIED PASS (Feb 15, 2026):** Approval bar showing only Yes/No buttons. No Cancel or End buttons present.
+
 ---
 
 ### VT-10: Other Option Removed from Multi-Question Modal (Fix for T4.1)
@@ -178,6 +192,8 @@ Call `ask_user` with ONLY: `question: "Would you like to use PostgreSQL, MySQL, 
 
 **Verify with user:** Ask: "Did choice buttons appear for PostgreSQL, MySQL, and SQLite even though no explicit choices were passed? The fallback parser should have detected them from the question text."
 
+**VERIFIED PASS (Feb 15, 2026):** Fallback parser correctly detected PostgreSQL, MySQL, and SQLite from comma-separated question text. User selected PostgreSQL successfully.
+
 **Fixed (F1):** Added `.replace()` to strip verb prefixes ("to use", "to try", etc.) from comma-separated fallback parsing in `_parseChoices()` Pattern 4.
 
 ---
@@ -204,17 +220,17 @@ After running all tests:
 2. For any FAIL results, ensure a `FIXME: <failure description>` line exists under that test
 3. Commit the updated file with FIXME annotations if any tests failed
 
-| Test  | Description                          | Result   |
-| ----- | ------------------------------------ | -------- |
-| VT-1  | Queue pause no auto-consume          | **PASS** |
-| VT-2  | Plan review cancel button            | **PASS** |
-| VT-3  | Waiting indicator during plan review | **PASS** |
-| VT-4  | Remote plan review reconnect         | **FAIL** |
-| VT-5  | History info icon                    | **PASS** |
-| VT-6  | Template UX rename (Pin/Unpin)       | **PASS** |
+| Test  | Description                          | Result      |
+| ----- | ------------------------------------ | ----------- |
+| VT-1  | Queue pause no auto-consume          | **PASS** ✅ |
+| VT-2  | Plan review cancel button            | **PASS** ✅ |
+| VT-3  | Waiting indicator during plan review | **PASS** ✅ |
+| VT-4  | Remote plan review reconnect         | **FAIL** ⚠️ |
+| VT-5  | History info icon                    | **PASS** ✅ |
+| VT-6  | Template UX rename (Pin/Unpin)       | **PASS** ✅ |
 | VT-7  | Other button removed from choices    | **PASS** ✅ |
 | VT-8  | End/Cancel removed from choices      | **PASS** ✅ |
-| VT-9  | End/Cancel removed from approval     | **PASS** |
+| VT-9  | End/Cancel removed from approval     | **PASS** ✅ |
 | VT-10 | Other removed from multi-question    | **PASS** ✅ |
-| VT-11 | Comma-separated fallback parsing     | **PASS** |
+| VT-11 | Comma-separated fallback parsing     | **PASS** ✅ |
 | VT-12 | Updated AI guidance choices usage    | **PASS** ✅ |
