@@ -1040,6 +1040,17 @@
       window.__applyFlowCommandInitialState(window.__flowcommandInitialState);
       window.__flowcommandInitialState = null;
     }
+    // Restore plan review from localStorage if saved (remote reconnect / page reload)
+    // This shows the modal early while waiting for server state, which is the source of truth
+    if (window.__pendingLocalStoragePlanReview && !activePlanReview) {
+      var prData = window.__pendingLocalStoragePlanReview;
+      console.log(
+        "[FlowCommand] Restoring plan review from localStorage early:",
+        prData.reviewId,
+      );
+      showPlanReviewModal(prData.reviewId, prData.title, prData.plan);
+      window.__pendingLocalStoragePlanReview = null;
+    }
     console.log(
       "[FlowCommand Webview] dispatchVSCodeMessage registered on window",
     );
@@ -3222,6 +3233,14 @@
   var activePlanReview = null; // { reviewId, overlay, comments }
 
   function showPlanReviewModal(reviewId, title, plan) {
+    console.log(
+      "[FlowCommand] showPlanReviewModal called:",
+      reviewId,
+      "title:",
+      title,
+      "planLength:",
+      plan ? plan.length : 0,
+    );
     // Close existing if any
     if (activePlanReview) {
       closePlanReviewModal(activePlanReview.reviewId);
@@ -3345,6 +3364,21 @@
       overlay: overlay,
       comments: comments,
     };
+
+    console.log(
+      "[FlowCommand] showPlanReviewModal: modal created and added to DOM for",
+      reviewId,
+    );
+
+    // Persist to localStorage for reconnect resilience
+    try {
+      localStorage.setItem(
+        "flowcommand_pendingPlanReview",
+        JSON.stringify({ reviewId: reviewId, title: title, plan: plan }),
+      );
+    } catch (e) {
+      /* localStorage not available */
+    }
 
     // Mark as pending so the waiting indicator shows
     document.body.classList.add("has-pending-toolcall");
@@ -3569,6 +3603,12 @@
       activePlanReview.overlay.parentNode.removeChild(activePlanReview.overlay);
     }
     activePlanReview = null;
+    // Clear localStorage persistence
+    try {
+      localStorage.removeItem("flowcommand_pendingPlanReview");
+    } catch (e) {
+      /* localStorage not available */
+    }
     // Clear pending state so the waiting indicator hides
     if (!pendingToolCall && !planReviewPendingId) {
       document.body.classList.remove("has-pending-toolcall");

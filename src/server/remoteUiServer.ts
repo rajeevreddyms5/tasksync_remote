@@ -3191,6 +3191,10 @@ self.addEventListener('fetch', event => {
                         socket.emit('message', messageQueue.shift());
                     }
                     
+                    // Request fresh state on every reconnect to ensure plan reviews, 
+                    // pending requests, and queue state are always up to date
+                    socket.emit('getState');
+                    
                     // Refresh current tab data after reconnection
                     const activeTab = document.querySelector('.remote-tab.active');
                     if (activeTab) {
@@ -3913,6 +3917,20 @@ self.addEventListener('fetch', event => {
         
         // Start connection
         connectSocket();
+
+        // Early plan review restoration from localStorage (shows modal before socket connects)
+        // This handles page-reload scenarios where the server hasn't sent state yet
+        // Server state will override this via applyInitialState (server is source of truth)
+        try {
+            var savedPlanReview = localStorage.getItem('flowcommand_pendingPlanReview');
+            if (savedPlanReview) {
+                var prData = JSON.parse(savedPlanReview);
+                if (prData && prData.reviewId && prData.plan) {
+                    console.log('[FlowCommand] Restoring plan review from localStorage:', prData.reviewId);
+                    window.__pendingLocalStoragePlanReview = prData;
+                }
+            }
+        } catch (e) { /* localStorage not available */ }
     </script>
     
     <!-- Main webview.js -->
