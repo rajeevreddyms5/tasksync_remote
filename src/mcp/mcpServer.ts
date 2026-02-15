@@ -120,13 +120,13 @@ export class McpServerManager {
         "ask_user",
         {
           description:
-            "SUBAGENT RESTRICTION: Subagents (via runSubagent) MUST NOT call this tool. CRITICAL MODE RULES — pick exactly one: (A) Single question + choices → pass 'question' + 'choices'. Shows choice BUTTONS above the always-on text input. No modal, no Submit/Cancel. User clicks button OR types custom. Example: { question: 'Which DB?', choices: [{label:'1. PostgreSQL',value:'postgresql'},{label:'2. MySQL',value:'mysql'},{label:'3. SQLite',value:'sqlite'}] }. (B) Single open-ended question → pass 'question' only. Uses the always-on text input. No modal, no Submit/Cancel, no form. Example: { question: 'What would you like to do next?' }. (C) Multi-question form → pass 'questions' array (2-4 items). Shows MODAL with Submit/Cancel. Use ONLY when gathering 2+ pieces of info. Each item needs 'header' (≤12 chars) + 'question'. Add 'options' for radio/checkbox; omit for free text. Set 'multiSelect: true' for checkboxes. Example: { questions: [{header:'Language',question:'What language?',options:[{label:'Python'},{label:'Go'}]},{header:'Framework',question:'What framework?'}] }. ANTI-PATTERNS (NEVER DO THIS): ❌ WRONG: questions: [{header:'DB',question:'Which DB?',options:[...]}] for single question → ✅ RIGHT: Use mode A with question + choices instead. ❌ WRONG: questions: '[{\"header\":\"Lang\"...}]' (stringified JSON) → ✅ RIGHT: questions: [{header:'Lang',...}] (actual array). RULES: NEVER use 'questions' for single question — use mode A or B. ALWAYS use 'choices' when question has predefined options. ALWAYS pass 'questions' as JSON array, NOT string. ALWAYS populate 'context' with your FULL response (explanations, code, analysis). The user reads this from FlowCommand's remote UI — without it they see nothing. CANCEL HANDLING: User can cancel via Cancel button. Result will have {response: 'User cancelled', ...}. Do NOT reprompt after cancel — acknowledge and move on. NOTE: For presenting detailed multi-step plans or proposals that need user sign-off, use plan_review instead.",
+            "SUBAGENT RESTRICTION: Subagents (via runSubagent) MUST NOT call this tool. CRITICAL MODE RULES — pick exactly one: (A) Single question + choices → pass 'question' + 'choices'. Shows choice BUTTONS above the always-on text input. No modal, no Submit/Cancel. User clicks button OR types custom. Example: { question: 'Which DB?', choices: [{label:'1. PostgreSQL',value:'postgresql'},{label:'2. MySQL',value:'mysql'},{label:'3. SQLite',value:'sqlite'}] }. (B) Single open-ended question → pass 'question' only. Uses the always-on text input. No modal, no Submit/Cancel, no form. Example: { question: 'What would you like to do next?' }. (C) Multi-question form → pass 'questions' array (2-4 items). Shows MODAL with Submit/Cancel. Use ONLY when gathering 2+ pieces of info. Each item needs 'header' (≤12 chars) + 'question'. Add 'options' for radio/checkbox; omit for free text. Set 'multiSelect: true' for checkboxes. Example: { questions: [{header:'Language',question:'What language?',options:[{label:'Python'},{label:'Go'}]},{header:'Framework',question:'What framework?'}] }. ANTI-PATTERNS (NEVER DO THIS): ❌ WRONG: questions: [{header:'DB',question:'Which DB?',options:[...]}] for single question → ✅ RIGHT: Use mode A with question + choices instead. ❌ WRONG: questions: '[{\"header\":\"Lang\"...}]' (stringified JSON) → ✅ RIGHT: questions: [{header:'Lang',...}] (actual array). RULES: NEVER use 'questions' for single question — use mode A or B. ALWAYS use 'choices' when question has predefined options. ALWAYS pass 'questions' as JSON array, NOT string. Use 'context' for brief response text visible in remote UI. For detailed plans, use plan_review instead. CANCEL HANDLING: User can cancel via Cancel button. Result will have {response: 'User cancelled', ...}. Do NOT reprompt after cancel — acknowledge and move on.",
           inputSchema: z.object({
             context: z
               .string()
               .optional()
               .describe(
-                "Your FULL response content that the user needs to read. Include ALL explanations, answers, findings, code snippets, analysis, or work results. This is displayed in the FlowCommand remote UI so the user can read your complete response from their phone/browser without switching to the chat window. Do NOT summarize — include the full text of your response.",
+                "Your response content for the user to read. This is displayed in the FlowCommand remote UI so the user can read your response from their phone/browser. For detailed plans or proposals, use plan_review instead.",
               ),
             question: z
               .string()
@@ -192,9 +192,14 @@ export class McpServerManager {
                     .describe("Allow custom text input in addition to options"),
                 }),
               )
+              .min(
+                2,
+                "Use 'question' + 'choices' for single question, not 'questions' array",
+              )
+              .max(4, "Maximum 4 questions allowed")
               .optional()
               .describe(
-                "Array of questions for multi-question form (mode C only, 2-4 items)",
+                "Mode C ONLY: Array of 2-4 questions. DO NOT use for single question — use 'question' + 'choices' instead.",
               ),
           }),
         },

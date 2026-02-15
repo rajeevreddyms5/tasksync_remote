@@ -4530,6 +4530,11 @@ export class FlowCommandWebviewProvider
 
     // NEGATIVE patterns - questions that require specific input (NOT approval questions)
     const requiresSpecificInput = [
+      // Questions with explicit "X or Y?" choices (e.g., "PASS or FAIL?", "Yes or No?")
+      // These should show the actual choices, not Yes/No approval buttons
+      /\b\w+\s+or\s+\w+\s*\?$/i,
+      // Questions with comma-separated options ending with "or" (e.g., "A, B, or C?")
+      /\b\w+(?:\s*,\s*\w+)+\s*,?\s+or\s+\w+\s*\?$/i,
       // Generic "select/choose an option" prompts - these need specific choice, not yes/no
       /please (?:select|choose|pick) (?:an? )?option/i,
       /select (?:an? )?option/i,

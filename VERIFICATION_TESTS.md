@@ -41,6 +41,7 @@ Call `ask_user` with: `question: "Do you see the queue items still in the queue 
 **VERIFIED PASS (Feb 15, 2026):** Queue items remain in queue when paused (not auto-consumed). Test passed with updated extension v2.0.3. Both IDE and remote sessions now have consistent queue pause behavior.
 
 **Test Details:**
+
 - IDE mode: ✅ Queue paused, prompts accumulate in queue
 - Remote mode: ✅ Queue paused, prompts accumulate in queue (FIXED)
 
@@ -130,6 +131,8 @@ Call `ask_user` with:
 
 **VERIFIED PASS (Feb 15, 2026):** Choice buttons displayed correctly, no multi-question modal. AI correctly used mode A with question + choices parameters.
 
+FIXME: In current test run, choice buttons did not appear - user reported fail.
+
 **Fixed (D1/E1):** Rewrote `modelDescription` with explicit 3-mode format (A/B/C). AI should now use `question` + `choices` for single questions with predefined options.
 
 ---
@@ -147,6 +150,8 @@ Call `ask_user` with:
 **Verify with user:** After they respond, ask: "Did you see ONLY the choice buttons (Dark, Light, System) with no 'End', 'Cancel', or 'Other' buttons?"
 
 **VERIFIED PASS (Feb 15, 2026):** Choice buttons displayed correctly, no End/Cancel/Other buttons. AI correctly used mode A with question + choices parameters.
+
+FIXME: In current test run, choice buttons did not appear - user reported fail or cancelled.
 
 **Fixed (D1/E1):** Same as VT-7 — modelDescription rewrite ensures AI uses `question` + `choices` mode.
 
@@ -181,6 +186,8 @@ Call `ask_user` with the `questions` parameter:
 
 **VERIFIED PASS (Feb 15, 2026):** Multi-question form rendered correctly with all fields and buttons. User selected Python for Language and entered "Flutter" for Framework. Form accepted responses properly.
 
+FIXME: In current test run, user reported fail.
+
 **Fixed (D1/E1):** modelDescription now explicitly describes multi-question mode (C) with examples. AI should use `questions` array for 2+ questions.
 
 ---
@@ -210,6 +217,8 @@ Call `ask_user` with ONLY: `question: "Would you like to use PostgreSQL, MySQL, 
 
 **VERIFIED PASS (Feb 15, 2026):** VT-7 and VT-8 both produced choice buttons correctly. AI guidance is working — I used the correct modes based on the anti-pattern warnings and explicit examples in modelDescription.
 
+FIXME: In current test run, VT-7 and VT-8 failed, so this fails. AI did not use correct modes.
+
 **Fixed (D1/E1):** Rewrote `modelDescription` (package.json + mcpServer.ts) and `copilot-instructions.md` with concise, unambiguous 3-mode guidance. Instructions now reference tool description instead of repeating examples.
 
 ---
@@ -230,9 +239,9 @@ After running all tests:
 | VT-4  | Remote plan review reconnect         | **FAIL** ⚠️ |
 | VT-5  | History info icon                    | **PASS** ✅ |
 | VT-6  | Template UX rename (Pin/Unpin)       | **PASS** ✅ |
-| VT-7  | Other button removed from choices    | **PASS** ✅ |
-| VT-8  | End/Cancel removed from choices      | **PASS** ✅ |
+| VT-7  | Other button removed from choices    | **FAIL** ⚠️ |
+| VT-8  | End/Cancel removed from choices      | **FAIL** ⚠️ |
 | VT-9  | End/Cancel removed from approval     | **PASS** ✅ |
-| VT-10 | Other removed from multi-question    | **PASS** ✅ |
+| VT-10 | Other removed from multi-question    | **FAIL** ⚠️ |
 | VT-11 | Comma-separated fallback parsing     | **PASS** ✅ |
-| VT-12 | Updated AI guidance choices usage    | **PASS** ✅ |
+| VT-12 | Updated AI guidance choices usage    | **FAIL** ⚠️ |

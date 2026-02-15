@@ -109,6 +109,44 @@ export async function askUser(
         };
       }
 
+      // AUTO-CONVERT: Single-item questions array → single question mode (mode A or B)
+      // This handles AI mistakes gracefully - user gets the correct UI without error
+      if (params.questions.length === 1) {
+        const q = params.questions[0];
+        console.log(
+          "[FlowCommand] Auto-converting single-item questions array to mode A/B:",
+          q.question,
+        );
+
+        // Convert options to choices format if present
+        const convertedChoices = q.options?.map((opt) => ({
+          label: opt.label,
+          value: opt.label,
+        }));
+
+        // Delegate to single question mode with converted params
+        const result = await Promise.race([
+          provider.waitForUserResponse(
+            q.question || "",
+            convertedChoices,
+            params.context,
+          ),
+          cancellation.promise,
+        ]);
+
+        if (result.cancelled) {
+          return {
+            response: result.value,
+            attachments: [],
+          };
+        }
+
+        return {
+          response: result.value,
+          attachments: [],
+        };
+      }
+
       // Validate each question has required fields
       for (let i = 0; i < params.questions.length; i++) {
         const q = params.questions[i];
