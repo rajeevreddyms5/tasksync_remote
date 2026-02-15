@@ -36,7 +36,9 @@ Call `ask_user` with: `question: "Do you see the queue items still in the queue 
 
 **Fixed (A2):** Queue section auto-shows and expands when pause is clicked. Queue stays visible when paused even with 0 items, providing clear visual feedback of paused state.
 
-FIXME: Clarification needed — user-typed prompts go directly to AI even when queue is paused (this is intended). Queue pause only prevents auto-consumption of existing queue items. Need to re-verify VT-1 with that understanding. (A3)
+**Fixed (A3 — webview.js routing):** In webview.js line ~1426, added `queueEnabled && queuePaused` check before routing to queue. When queue is paused, `pendingToolCall` items now route to `addToQueue()` instead of direct submit. User-typed prompts still go directly to AI (this is intentional — only existing queue items are held when paused).
+
+**VERIFIED PASS (Feb 15, 2026):** Queue items remain in queue when paused (not auto-consumed). Test passed with updated extension v2.0.3.
 
 ---
 
@@ -76,7 +78,7 @@ Ask the user to:
 3. Disconnect and reconnect the remote session
 4. Verify the plan review modal restores
 
-FIXME: Plan review modal does not restore after remote reconnect. (C1 — deferred)
+FIXME: Plan review modal does NOT restore after remote reconnect despite fix attempt (C1 — STILL FAILS after 8f4da63). Fix implemented: `getState` emit on reconnect, localStorage persistence (`flowcommand_pendingPlanReview`), early restoration via `window.__pendingLocalStoragePlanReview`. Need to investigate why modal still doesn't reappear. Possible issues: (1) localStorage not persisting across remote disconnect, (2) restoration timing issue, (3) state sync not triggering UI update.
 
 ---
 
@@ -196,10 +198,10 @@ After running all tests:
 
 | Test  | Description                          | Result        |
 | ----- | ------------------------------------ | ------------- |
-| VT-1  | Queue pause no auto-consume          | **FAIL (A3)** |
+| VT-1  | Queue pause no auto-consume          | **PASS**      |
 | VT-2  | Plan review cancel button            | PASS          |
 | VT-3  | Waiting indicator during plan review | PASS          |
-| VT-4  | Remote plan review reconnect         | DEFERRED (C1) |
+| VT-4  | Remote plan review reconnect         | **FAIL (C1)** |
 | VT-5  | History info icon                    | PASS          |
 | VT-6  | Template UX rename (Pin/Unpin)       | PASS          |
 | VT-7  | Other button removed from choices    | PASS          |
