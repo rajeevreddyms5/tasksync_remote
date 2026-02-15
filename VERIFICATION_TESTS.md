@@ -51,8 +51,6 @@ Call `plan_review` with a short 3-step plan for building a REST API.
 
 **Verify with user:** Ask: "Do you see three buttons in the plan review footer: Cancel (left, subtle), Request Changes (middle), and Approve (right, primary)? Click Cancel to test it closes the panel."
 
-FIXME: Plan review modal does NOT restore after remote reconnect despite fix attempt (C1 — STILL FAILS after 8f4da63). Fix implemented: `getState` emit on reconnect, localStorage persistence (`flowcommand_pendingPlanReview`), early restoration via `window.__pendingLocalStoragePlanReview`. Need to investigate why modal still doesn't reappear. Possible issues: (1) localStorage not persisting across remote disconnect, (2) restoration timing issue, (3) state sync not triggering UI update. User confirmed failure in test.
-
 ---
 
 ### VT-3: Waiting Indicator During Plan Review (Fix for T5.3)
@@ -206,17 +204,17 @@ After running all tests:
 2. For any FAIL results, ensure a `FIXME: <failure description>` line exists under that test
 3. Commit the updated file with FIXME annotations if any tests failed
 
-| Test  | Description                          | Result        |
-| ----- | ------------------------------------ | ------------- |
-| VT-1  | Queue pause no auto-consume          | **PASS**      |
-| VT-2  | Plan review cancel button            | **PASS**      |
-| VT-3  | Waiting indicator during plan review | **PASS**      |
-| VT-4  | Remote plan review reconnect         | **FAIL**      |
-| VT-5  | History info icon                    | **PASS**      |
-| VT-6  | Template UX rename (Pin/Unpin)       | **PASS**      |
-| VT-7  | Other button removed from choices    | **FAIL**      |
-| VT-8  | End/Cancel removed from choices      | **FAIL**      |
-| VT-9  | End/Cancel removed from approval     | **PASS**      |
-| VT-10 | Other removed from multi-question    | **FAIL**      |
-| VT-11 | Comma-separated fallback parsing     | **PASS**      |
-| VT-12 | Updated AI guidance choices usage    | **FAIL**      |
+| Test  | Description                          | Result   |
+| ----- | ------------------------------------ | -------- |
+| VT-1  | Queue pause no auto-consume          | **PASS** |
+| VT-2  | Plan review cancel button            | **PASS** |
+| VT-3  | Waiting indicator during plan review | **PASS** |
+| VT-4  | Remote plan review reconnect         | **FAIL** |
+| VT-5  | History info icon                    | **PASS** |
+| VT-6  | Template UX rename (Pin/Unpin)       | **PASS** |
+| VT-7  | Other button removed from choices    | **FAIL** |
+| VT-8  | End/Cancel removed from choices      | **FAIL** |
+| VT-9  | End/Cancel removed from approval     | **PASS** |
+| VT-10 | Other removed from multi-question    | **FAIL** |
+| VT-11 | Comma-separated fallback parsing     | **PASS** |
+| VT-12 | Updated AI guidance choices usage    | **FAIL** |
