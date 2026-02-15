@@ -1662,173 +1662,182 @@
 
   function handleExtensionMessage(event) {
     var message = event.data;
-    console.log(
-      "[FlowCommand Webview] Received message:",
-      message.type,
-      message,
-    );
-    switch (message.type) {
-      case "updateQueue":
-        promptQueue = message.queue || [];
-        queueEnabled = message.enabled !== false;
-        queuePaused = message.paused === true;
-        renderQueue();
-        updateModeUI();
-        updateQueueVisibility();
-        updatePauseBtnVisibility();
-        updateQueuePauseUI();
-        updateCardSelection();
-        // Update end session button state based on whether "end" is in queue
-        updateEndSessionButtonState();
-        // Hide welcome section if we have current session calls
-        updateWelcomeSectionVisibility();
-        break;
-      case "toolCallPending":
-        console.log(
-          "[FlowCommand Webview] toolCallPending - showing question:",
-          message.prompt?.substring(0, 50),
-        );
-        showPendingToolCall(
-          message.id,
-          message.prompt,
-          message.isApprovalQuestion,
-          message.choices,
-          message.context,
-        );
-        break;
-      case "toolCallCompleted":
-        addToolCallToCurrentSession(message.entry);
-        break;
-      case "toolCallCancelled":
-        handleToolCallCancelled(message.id);
-        break;
-      case "updateCurrentSession":
-        currentSessionCalls = message.history || [];
-        renderCurrentSession();
-        // Hide welcome section if we have completed tool calls
-        updateWelcomeSectionVisibility();
-        // Auto-scroll to bottom after rendering
-        scrollToBottom();
-        break;
-      case "updatePersistedHistory":
-        persistedHistory = message.history || [];
-        renderHistoryModal();
-        break;
-      case "openHistoryModal":
-        openHistoryModal();
-        break;
-      case "openSettingsModal":
-        openSettingsModal();
-        break;
-      case "openPromptsModal":
-        openPromptsModal();
-        break;
-      case "updateSettings":
-        soundEnabled = message.soundEnabled !== false;
-        desktopNotificationEnabled =
-          message.desktopNotificationEnabled !== false;
-        autoFocusPanelEnabled = message.autoFocusPanelEnabled !== false;
-        mobileNotificationEnabled = message.mobileNotificationEnabled === true;
-        interactiveApprovalEnabled =
-          message.interactiveApprovalEnabled !== false;
-        reusablePrompts = message.reusablePrompts || [];
-        instructionInjection = message.instructionInjection || "off";
-        instructionText = message.instructionText || "";
-        instructionState = message.instructionStatus || "unknown";
-        mcpRunning = message.mcpRunning === true;
-        mcpUrl = message.mcpUrl || "";
-        updateSoundToggleUI();
-        updateDesktopNotificationToggleUI();
-        updateAutoFocusPanelToggleUI();
-        updateMobileNotificationToggleUI();
-        updateInteractiveApprovalToggleUI();
-        renderPromptsList();
-        updateInstructionUI();
-        updateMcpUI();
-        updateTemplateIndicator();
-        break;
-      case "slashCommandResults":
-        showSlashDropdown(message.prompts || []);
-        break;
-      case "playNotificationSound":
-        playNotificationSound();
-        break;
-      case "fileSearchResults":
-        showAutocomplete(message.files || []);
-        break;
-      case "updateAttachments":
-        currentAttachments = message.attachments || [];
-        updateChipsDisplay();
-        break;
-      case "imageSaved":
-        if (
-          message.attachment &&
-          !currentAttachments.some(function (a) {
-            return a.id === message.attachment.id;
-          })
-        ) {
-          currentAttachments.push(message.attachment);
+    try {
+      console.log(
+        "[FlowCommand Webview] Received message:",
+        message.type,
+        message,
+      );
+      switch (message.type) {
+        case "updateQueue":
+          promptQueue = message.queue || [];
+          queueEnabled = message.enabled !== false;
+          queuePaused = message.paused === true;
+          renderQueue();
+          updateModeUI();
+          updateQueueVisibility();
+          updatePauseBtnVisibility();
+          updateQueuePauseUI();
+          updateCardSelection();
+          // Update end session button state based on whether "end" is in queue
+          updateEndSessionButtonState();
+          // Hide welcome section if we have current session calls
+          updateWelcomeSectionVisibility();
+          break;
+        case "toolCallPending":
+          console.log(
+            "[FlowCommand Webview] toolCallPending - showing question:",
+            message.prompt?.substring(0, 50),
+          );
+          showPendingToolCall(
+            message.id,
+            message.prompt,
+            message.isApprovalQuestion,
+            message.choices,
+            message.context,
+          );
+          break;
+        case "toolCallCompleted":
+          addToolCallToCurrentSession(message.entry);
+          break;
+        case "toolCallCancelled":
+          handleToolCallCancelled(message.id);
+          break;
+        case "updateCurrentSession":
+          currentSessionCalls = message.history || [];
+          renderCurrentSession();
+          // Hide welcome section if we have completed tool calls
+          updateWelcomeSectionVisibility();
+          // Auto-scroll to bottom after rendering
+          scrollToBottom();
+          break;
+        case "updatePersistedHistory":
+          persistedHistory = message.history || [];
+          renderHistoryModal();
+          break;
+        case "openHistoryModal":
+          openHistoryModal();
+          break;
+        case "openSettingsModal":
+          openSettingsModal();
+          break;
+        case "openPromptsModal":
+          openPromptsModal();
+          break;
+        case "updateSettings":
+          soundEnabled = message.soundEnabled !== false;
+          desktopNotificationEnabled =
+            message.desktopNotificationEnabled !== false;
+          autoFocusPanelEnabled = message.autoFocusPanelEnabled !== false;
+          mobileNotificationEnabled =
+            message.mobileNotificationEnabled === true;
+          interactiveApprovalEnabled =
+            message.interactiveApprovalEnabled !== false;
+          reusablePrompts = message.reusablePrompts || [];
+          instructionInjection = message.instructionInjection || "off";
+          instructionText = message.instructionText || "";
+          instructionState = message.instructionStatus || "unknown";
+          mcpRunning = message.mcpRunning === true;
+          mcpUrl = message.mcpUrl || "";
+          updateSoundToggleUI();
+          updateDesktopNotificationToggleUI();
+          updateAutoFocusPanelToggleUI();
+          updateMobileNotificationToggleUI();
+          updateInteractiveApprovalToggleUI();
+          renderPromptsList();
+          updateInstructionUI();
+          updateMcpUI();
+          updateTemplateIndicator();
+          break;
+        case "slashCommandResults":
+          showSlashDropdown(message.prompts || []);
+          break;
+        case "playNotificationSound":
+          playNotificationSound();
+          break;
+        case "fileSearchResults":
+          showAutocomplete(message.files || []);
+          break;
+        case "updateAttachments":
+          currentAttachments = message.attachments || [];
           updateChipsDisplay();
-          // Auto-add image reference to input (like file references with #)
-          var displayName = message.attachment.isTemporary
-            ? "pasted-image"
-            : message.attachment.name;
-          var imageRef = "[Image: " + displayName + "]";
-          if (chatInput) {
-            var currentText = chatInput.value;
-            // Add space before if there's existing text that doesn't end with space/newline
-            if (currentText && !currentText.match(/[\s\n]$/)) {
-              chatInput.value = currentText + " " + imageRef;
-            } else {
-              chatInput.value = currentText + imageRef;
+          break;
+        case "imageSaved":
+          if (
+            message.attachment &&
+            !currentAttachments.some(function (a) {
+              return a.id === message.attachment.id;
+            })
+          ) {
+            currentAttachments.push(message.attachment);
+            updateChipsDisplay();
+            // Auto-add image reference to input (like file references with #)
+            var displayName = message.attachment.isTemporary
+              ? "pasted-image"
+              : message.attachment.name;
+            var imageRef = "[Image: " + displayName + "]";
+            if (chatInput) {
+              var currentText = chatInput.value;
+              // Add space before if there's existing text that doesn't end with space/newline
+              if (currentText && !currentText.match(/[\s\n]$/)) {
+                chatInput.value = currentText + " " + imageRef;
+              } else {
+                chatInput.value = currentText + imageRef;
+              }
+              chatInput.style.height = "auto";
+              chatInput.style.height = chatInput.scrollHeight + "px";
+              updateInputHighlighter();
+              updateSendButtonState();
             }
-            chatInput.style.height = "auto";
-            chatInput.style.height = chatInput.scrollHeight + "px";
-            updateInputHighlighter();
-            updateSendButtonState();
           }
-        }
-        break;
-      case "clear":
-        promptQueue = [];
-        currentSessionCalls = [];
-        renderQueue();
-        renderCurrentSession();
-        break;
-      case "clearProcessing":
-        // Clear the "Processing your response" state
-        clearProcessingState();
-        break;
-      case "planReviewPending":
-        // Show waiting indicator in sidebar (plan review opens in dedicated IDE panel)
-        if (message.plan) {
-          // Remote/full plan review modal (for remote clients)
-          showPlanReviewModal(message.reviewId, message.title, message.plan);
-        } else {
-          // Sidebar: just show waiting indicator, no modal
-          planReviewPendingId = message.reviewId;
-          document.body.classList.add("has-pending-toolcall");
-        }
-        break;
-      case "planReviewCompleted":
-        closePlanReviewModal(message.reviewId);
-        if (planReviewPendingId === message.reviewId) {
-          planReviewPendingId = null;
-          // Only remove class if no other pending tool call is active
-          if (!pendingToolCall) {
-            document.body.classList.remove("has-pending-toolcall");
+          break;
+        case "clear":
+          promptQueue = [];
+          currentSessionCalls = [];
+          renderQueue();
+          renderCurrentSession();
+          break;
+        case "clearProcessing":
+          // Clear the "Processing your response" state
+          clearProcessingState();
+          break;
+        case "planReviewPending":
+          // Show waiting indicator in sidebar (plan review opens in dedicated IDE panel)
+          if (message.plan) {
+            // Remote/full plan review modal (for remote clients)
+            showPlanReviewModal(message.reviewId, message.title, message.plan);
+          } else {
+            // Sidebar: just show waiting indicator, no modal
+            planReviewPendingId = message.reviewId;
+            document.body.classList.add("has-pending-toolcall");
           }
-        }
-        break;
-      case "multiQuestionPending":
-        showMultiQuestionModal(message.requestId, message.questions);
-        break;
-      case "multiQuestionCompleted":
-        closeMultiQuestionModal(message.requestId);
-        break;
-      case "queuedAgentRequestCount":
-        updateQueuedAgentBadge(message.count || 0);
-        break;
+          break;
+        case "planReviewCompleted":
+          closePlanReviewModal(message.reviewId);
+          if (planReviewPendingId === message.reviewId) {
+            planReviewPendingId = null;
+            // Only remove class if no other pending tool call is active
+            if (!pendingToolCall) {
+              document.body.classList.remove("has-pending-toolcall");
+            }
+          }
+          break;
+        case "multiQuestionPending":
+          showMultiQuestionModal(message.requestId, message.questions);
+          break;
+        case "multiQuestionCompleted":
+          closeMultiQuestionModal(message.requestId);
+          break;
+        case "queuedAgentRequestCount":
+          updateQueuedAgentBadge(message.count || 0);
+          break;
+      }
+    } catch (err) {
+      console.error(
+        "[FlowCommand Webview] Error handling message:",
+        message?.type,
+        err,
+      );
     }
   }
 

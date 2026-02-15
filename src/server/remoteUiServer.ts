@@ -3186,7 +3186,16 @@ self.addEventListener('fetch', event => {
                         localStorage.setItem('flowcommand_pin', PIN);
                     } catch (e) {}
                     
-                    // Flush message queue
+                    // Remove stale planReviewResponse messages from queue before flushing.
+                    // If user responded to a plan review while disconnected, the IDE may have
+                    // already resolved it. Sending the stale response would be harmless (server
+                    // ignores unmatched reviewIds) but we clean up for clarity.
+                    // The fresh state from getState will sync the correct plan review status.
+                    messageQueue = messageQueue.filter(function(msg) {
+                        return msg.type !== 'planReviewResponse';
+                    });
+
+                    // Flush remaining message queue
                     while (messageQueue.length > 0) {
                         socket.emit('message', messageQueue.shift());
                     }
@@ -3233,65 +3242,81 @@ self.addEventListener('fetch', event => {
                 }
 
                 if (window.dispatchVSCodeMessage) {
-                    if (state.queue !== undefined) {
-                        window.dispatchVSCodeMessage({ type: 'updateQueue', queue: state.queue, enabled: state.queueEnabled, paused: state.queuePaused });
-                    }
-                    if (state.currentSession) {
-                        window.dispatchVSCodeMessage({ type: 'updateCurrentSession', history: state.currentSession });
-                    }
-                    if (state.persistedHistory) {
-                        window.dispatchVSCodeMessage({ type: 'updatePersistedHistory', history: state.persistedHistory });
-                    }
-                    if (state.settings) {
-                        window.dispatchVSCodeMessage({ type: 'updateSettings', ...state.settings });
-                        // For remote clients: default to notifications ON (they explicitly want them)
-                        // Only turn OFF if VS Code explicitly disabled it, otherwise keep TRUE
-                        // This ensures remote users get notifications by default
-                        if (state.settings.mobileNotificationEnabled === false) {
-                            window.mobileNotificationEnabled = false;
+                    // Each section wrapped in try-catch to prevent errors in one section
+                    // from blocking subsequent sections (especially plan review at the end)
+                    try {
+                        if (state.queue !== undefined) {
+                            window.dispatchVSCodeMessage({ type: 'updateQueue', queue: state.queue, enabled: state.queueEnabled, paused: state.queuePaused });
                         }
-                    }
-                    if (state.pendingRequest) {
-                        window.dispatchVSCodeMessage({
-                            type: 'toolCallPending',
-                            id: state.pendingRequest.id,
-                            prompt: state.pendingRequest.prompt,
-                            context: state.pendingRequest.context,
-                            isApprovalQuestion: state.pendingRequest.isApprovalQuestion,
-                            choices: state.pendingRequest.choices
-                        });
-                    } else if (state.pendingMultiQuestion) {
-                        // Handle multi-question pending state
-                        window.dispatchVSCodeMessage({
-                            type: 'multiQuestionPending',
-                            requestId: state.pendingMultiQuestion.requestId,
-                            questions: state.pendingMultiQuestion.questions
-                        });
-                    } else {
-                        // No pending request - clear any stale pending UI
-                        window.dispatchVSCodeMessage({ type: 'toolCallCancelled', id: '__stale__' });
-                    }
-                    // Sync queued agent request count
-                    if (state.queuedAgentRequestCount !== undefined) {
-                        window.dispatchVSCodeMessage({ type: 'queuedAgentRequestCount', count: state.queuedAgentRequestCount });
-                    }
-                    // Restore active plan review if one is pending (independent of pendingRequest)
-                    if (state.pendingPlanReview) {
-                        window.dispatchVSCodeMessage({
-                            type: 'planReviewPending',
-                            reviewId: state.pendingPlanReview.reviewId,
-                            title: state.pendingPlanReview.title,
-                            plan: state.pendingPlanReview.plan
-                        });
-                    } else {
-                        // Close any stale plan review modal that may have missed
-                        // the planReviewCompleted broadcast (e.g., during brief disconnect)
-                        window.dispatchVSCodeMessage({
-                            type: 'planReviewCompleted',
-                            reviewId: '__stale__',
-                            status: 'cancelled'
-                        });
-                    }
+                    } catch (e) { console.error('[FlowCommand] applyInitialState queue error:', e); }
+
+                    try {
+                        if (state.currentSession) {
+                            window.dispatchVSCodeMessage({ type: 'updateCurrentSession', history: state.currentSession });
+                        }
+                    } catch (e) { console.error('[FlowCommand] applyInitialState session error:', e); }
+
+                    try {
+                        if (state.persistedHistory) {
+                            window.dispatchVSCodeMessage({ type: 'updatePersistedHistory', history: state.persistedHistory });
+                        }
+                    } catch (e) { console.error('[FlowCommand] applyInitialState history error:', e); }
+
+                    try {
+                        if (state.settings) {
+                            window.dispatchVSCodeMessage({ type: 'updateSettings', ...state.settings });
+                            if (state.settings.mobileNotificationEnabled === false) {
+                                window.mobileNotificationEnabled = false;
+                            }
+                        }
+                    } catch (e) { console.error('[FlowCommand] applyInitialState settings error:', e); }
+
+                    try {
+                        if (state.pendingRequest) {
+                            window.dispatchVSCodeMessage({
+                                type: 'toolCallPending',
+                                id: state.pendingRequest.id,
+                                prompt: state.pendingRequest.prompt,
+                                context: state.pendingRequest.context,
+                                isApprovalQuestion: state.pendingRequest.isApprovalQuestion,
+                                choices: state.pendingRequest.choices
+                            });
+                        } else if (state.pendingMultiQuestion) {
+                            window.dispatchVSCodeMessage({
+                                type: 'multiQuestionPending',
+                                requestId: state.pendingMultiQuestion.requestId,
+                                questions: state.pendingMultiQuestion.questions
+                            });
+                        } else {
+                            window.dispatchVSCodeMessage({ type: 'toolCallCancelled', id: '__stale__' });
+                        }
+                    } catch (e) { console.error('[FlowCommand] applyInitialState pending error:', e); }
+
+                    try {
+                        if (state.queuedAgentRequestCount !== undefined) {
+                            window.dispatchVSCodeMessage({ type: 'queuedAgentRequestCount', count: state.queuedAgentRequestCount });
+                        }
+                    } catch (e) { console.error('[FlowCommand] applyInitialState agent count error:', e); }
+
+                    // Plan review sync - runs independently of all above sections
+                    try {
+                        if (state.pendingPlanReview) {
+                            console.log('[FlowCommand] applyInitialState: restoring plan review', state.pendingPlanReview.reviewId);
+                            window.dispatchVSCodeMessage({
+                                type: 'planReviewPending',
+                                reviewId: state.pendingPlanReview.reviewId,
+                                title: state.pendingPlanReview.title,
+                                plan: state.pendingPlanReview.plan
+                            });
+                        } else {
+                            console.log('[FlowCommand] applyInitialState: clearing stale plan review');
+                            window.dispatchVSCodeMessage({
+                                type: 'planReviewCompleted',
+                                reviewId: '__stale__',
+                                status: 'cancelled'
+                            });
+                        }
+                    } catch (e) { console.error('[FlowCommand] applyInitialState plan review error:', e); }
                 }
             }
 

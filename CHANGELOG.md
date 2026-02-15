@@ -2,6 +2,15 @@
 
 All notable changes to FlowCommand will be documented in this file.
 
+## [2.0.6] - 2025-02-15
+
+### Fixed
+- Plan review now reliably shows on remote session reconnect/refresh
+- Plan review stale modal now properly closes after IDE approval during disconnect
+- Error isolation in `applyInitialState`: each state section wrapped in try-catch to prevent cascading failures
+- Stale `planReviewResponse` messages filtered from queue on reconnect
+- Added try-catch in `handleExtensionMessage` to prevent uncaught errors from breaking state sync
+
 ## [2.0.5] - 2025-02-15
 
 ### Fixed
