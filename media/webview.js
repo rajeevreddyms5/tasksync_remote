@@ -3066,7 +3066,11 @@
     // Build choice buttons
     var buttonsHtml = currentChoices
       .map(function (choice, index) {
-        var shortLabel = choice.shortLabel || choice.value;
+        var shortLabel = choice.shortLabel || choice.label || choice.value;
+        // Truncate long button labels to keep UI compact
+        if (shortLabel.length > 40) {
+          shortLabel = shortLabel.substring(0, 37) + "...";
+        }
         var title = choice.label || choice.value;
         return (
           '<button class="choice-btn" data-value="' +
