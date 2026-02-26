@@ -1103,7 +1103,7 @@ export class RemoteUiServer implements vscode.Disposable {
    */
   private _getServiceWorker(): string {
     return `
-const CACHE_NAME = 'flowcommand-remote-v1';
+const CACHE_NAME = 'flowcommand-remote-v2';
 const ASSETS = [
     '/app',
     '/manifest.json',
@@ -1113,10 +1113,25 @@ const ASSETS = [
     '/media/FC-logo.svg'
 ];
 
+// Skip waiting on install to activate immediately (crash recovery)
 self.addEventListener('install', event => {
+    self.skipWaiting();
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => cache.addAll(ASSETS))
+            .catch(err => console.log('[FlowCommand SW] Cache failed:', err))
+    );
+});
+
+// Claim clients immediately on activate (ensures fresh SW after crash)
+self.addEventListener('activate', event => {
+    event.waitUntil(
+        caches.keys().then(keys => {
+            return Promise.all(
+                keys.filter(key => key !== CACHE_NAME)
+                    .map(key => caches.delete(key))
+            );
+        }).then(() => self.clients.claim())
     );
 });
 
@@ -1124,6 +1139,7 @@ self.addEventListener('fetch', event => {
     event.respondWith(
         caches.match(event.request)
             .then(response => response || fetch(event.request))
+            .catch(() => fetch(event.request))
     );
 });
         `.trim();
@@ -3910,11 +3926,40 @@ self.addEventListener('fetch', event => {
             }
         } catch (e) {}
         
-        // Register service worker
+        // Register service worker (with crash-recovery safeguards)
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js').catch(err => {
-                console.log('[FlowCommand] SW registration failed:', err);
-            });
+            // Wait for page to be fully loaded to avoid InvalidStateError
+            var registerSW = function() {
+                try {
+                    // Check document state - avoid registration if document is in invalid state
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', registerSW, { once: true });
+                        return;
+                    }
+                    // Unregister stale service workers first (crash recovery)
+                    navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                        var chain = Promise.resolve();
+                        registrations.forEach(function(reg) {
+                            chain = chain.then(function() { return reg.unregister(); });
+                        });
+                        return chain;
+                    }).then(function() {
+                        return navigator.serviceWorker.register('/sw.js');
+                    }).then(function(reg) {
+                        console.log('[FlowCommand] SW registered successfully');
+                    }).catch(function(err) {
+                        // Gracefully handle InvalidStateError and other registration failures
+                        if (err.name === 'InvalidStateError') {
+                            console.log('[FlowCommand] SW registration skipped (document in invalid state after crash)');
+                        } else {
+                            console.log('[FlowCommand] SW registration failed:', err);
+                        }
+                    });
+                } catch (e) {
+                    console.log('[FlowCommand] SW registration error:', e);
+                }
+            };
+            registerSW();
         }
         
         // Handle page visibility changes (for mobile browser/PWA wake-up)

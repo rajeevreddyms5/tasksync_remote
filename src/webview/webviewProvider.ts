@@ -3623,6 +3623,23 @@ export class FlowCommandWebviewProvider
   /**
    * Load persisted history from disk (past sessions only) - ASYNC to not block activation
    */
+  /**
+   * Validate a single history entry has required fields and valid data.
+   * Entries corrupted by a crash (null fields, missing ids) are discarded.
+   */
+  private _isValidHistoryEntry(entry: unknown): entry is ToolCallEntry {
+    if (!entry || typeof entry !== "object") return false;
+    const e = entry as Record<string, unknown>;
+    return (
+      typeof e.id === "string" &&
+      e.id.length > 0 &&
+      typeof e.prompt === "string" &&
+      typeof e.response === "string" &&
+      typeof e.timestamp === "number" &&
+      typeof e.status === "string"
+    );
+  }
+
   private async _loadPersistedHistoryFromDiskAsync(): Promise<void> {
     try {
       const storagePath = this._context.globalStorageUri.fsPath;
@@ -3638,11 +3655,54 @@ export class FlowCommandWebviewProvider
       }
 
       const data = await fs.promises.readFile(historyPath, "utf8");
-      const parsed = JSON.parse(data);
+
+      // Handle empty or whitespace-only files (crash-truncated)
+      if (!data || !data.trim()) {
+        console.warn(
+          "[FlowCommand] History file is empty (possible crash truncation), starting fresh",
+        );
+        this._persistedHistory = [];
+        return;
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(data);
+      } catch (parseErr) {
+        // JSON is corrupted (crash during write) - backup and reset
+        console.error(
+          "[FlowCommand] History file corrupted, backing up and resetting:",
+          parseErr,
+        );
+        try {
+          const backupPath = historyPath + ".corrupt." + Date.now();
+          await fs.promises.rename(historyPath, backupPath);
+          console.log(
+            "[FlowCommand] Corrupted history backed up to:",
+            backupPath,
+          );
+        } catch {
+          // If backup fails, just delete
+          try {
+            await fs.promises.unlink(historyPath);
+          } catch {
+            // Ignore
+          }
+        }
+        this._persistedHistory = [];
+        return;
+      }
+
+      const parsedObj = parsed as Record<string, unknown>;
       // Only load completed entries from past sessions, enforce max limit
-      this._persistedHistory = Array.isArray(parsed.history)
-        ? parsed.history
-            .filter((entry: ToolCallEntry) => entry.status === "completed")
+      // Validate each entry to discard crash-corrupted data
+      this._persistedHistory = Array.isArray(parsedObj.history)
+        ? parsedObj.history
+            .filter(
+              (entry: unknown) =>
+                this._isValidHistoryEntry(entry) &&
+                (entry as ToolCallEntry).status === "completed",
+            )
             .slice(0, this._MAX_HISTORY_ENTRIES)
         : [];
     } catch (error) {
@@ -3668,8 +3728,47 @@ export class FlowCommandWebviewProvider
       }
 
       const data = await fs.promises.readFile(sessionPath, "utf8");
-      const parsed = JSON.parse(data);
-      const rawEntries = Array.isArray(parsed.history) ? parsed.history : [];
+
+      // Handle empty or whitespace-only files (crash-truncated)
+      if (!data || !data.trim()) {
+        console.warn(
+          "[FlowCommand] Session file is empty (possible crash truncation), starting fresh",
+        );
+        this._currentSessionCalls = [];
+        this._currentSessionCallsMap.clear();
+        return;
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(data);
+      } catch (parseErr) {
+        // JSON is corrupted (crash during write) - backup and reset
+        console.error(
+          "[FlowCommand] Session file corrupted, backing up and resetting:",
+          parseErr,
+        );
+        try {
+          const backupPath = sessionPath + ".corrupt." + Date.now();
+          await fs.promises.rename(sessionPath, backupPath);
+        } catch {
+          try {
+            await fs.promises.unlink(sessionPath);
+          } catch {
+            // Ignore
+          }
+        }
+        this._currentSessionCalls = [];
+        this._currentSessionCallsMap.clear();
+        return;
+      }
+
+      const parsedObj = parsed as Record<string, unknown>;
+      const rawEntries = Array.isArray(parsedObj.history)
+        ? (parsedObj.history as unknown[]).filter((entry: unknown) =>
+            this._isValidHistoryEntry(entry),
+          )
+        : [];
 
       const recovered = rawEntries.map((entry: ToolCallEntry) => {
         const safeAttachments = Array.isArray(entry.attachments)
