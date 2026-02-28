@@ -110,6 +110,7 @@ type ToWebviewMessage =
     }
   | { type: "toolCallCompleted"; entry: ToolCallEntry }
   | { type: "updateCurrentSession"; history: ToolCallEntry[] }
+  | { type: "appendSessionEntry"; entry: ToolCallEntry }
   | { type: "updatePersistedHistory"; history: ToolCallEntry[] }
   | { type: "fileSearchResults"; files: FileSearchResult[] }
   | { type: "updateAttachments"; attachments: AttachmentInfo[] }
@@ -283,6 +284,7 @@ export class FlowCommandWebviewProvider
   private _historySaveTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly _HISTORY_SAVE_DEBOUNCE_MS = 2000; // 2 seconds debounce
   private _historyDirty: boolean = false; // Track if history needs saving
+  private _persistedHistoryLoaded = false; // Lazy-load: only read from disk when history modal first opened
 
   // Debounce timer for current session persistence (prevents loss on reload)
   private _currentSessionSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -290,7 +292,7 @@ export class FlowCommandWebviewProvider
 
   // Performance limits
   private readonly _MAX_HISTORY_ENTRIES = 100;
-  private readonly _MAX_CURRENT_SESSION_ENTRIES = 200;
+  private readonly _MAX_CURRENT_SESSION_ENTRIES = 50;
   private readonly _MAX_FILE_SEARCH_RESULTS = 500;
   private readonly _MAX_QUEUE_PROMPT_LENGTH = 100000; // 100KB for queue prompts
   private readonly _MAX_FOLDER_SEARCH_RESULTS = 1000;
@@ -374,12 +376,10 @@ export class FlowCommandWebviewProvider
     contextManager: ContextManager,
   ) {
     this._contextManager = contextManager;
-    // Load both queue and history async to not block activation
+    // Load queue and current session async to not block activation
+    // Persisted history is loaded lazily on first history modal open
     this._loadQueueFromDiskAsync().catch((err) => {
       console.error("Failed to load queue:", err);
-    });
-    this._loadPersistedHistoryFromDiskAsync().catch((err) => {
-      console.error("Failed to load history:", err);
     });
     this._loadCurrentSessionFromDiskAsync().catch((err) => {
       console.error("Failed to load current session:", err);
@@ -435,6 +435,11 @@ export class FlowCommandWebviewProvider
       (tc) => tc.status === "completed",
     );
     if (completedCalls.length > 0) {
+      // If history was never opened we haven't loaded from disk yet —
+      // do a synchronous read now so we don't overwrite/lose old history.
+      if (!this._persistedHistoryLoaded) {
+        this._loadPersistedHistorySync();
+      }
       // Prepend current session calls to persisted history, enforce max limit
       this._persistedHistory = [
         ...completedCalls,
@@ -450,7 +455,8 @@ export class FlowCommandWebviewProvider
   /**
    * Open history modal (called from view title bar button)
    */
-  public openHistoryModal(): void {
+  public async openHistoryModal(): Promise<void> {
+    await this._ensureHistoryLoaded();
     this._view?.webview.postMessage({ type: "openHistoryModal" });
     this._updatePersistedHistoryUI();
   }
@@ -567,7 +573,7 @@ export class FlowCommandWebviewProvider
     this._currentSessionCalls.push(entry);
     this._currentSessionCallsMap.set(entry.id, entry);
     this._trimCurrentSessionCalls();
-    this._updateCurrentSessionUI();
+    this._appendCompletedEntryUI(entry);
 
     // Notify the webview
     const message: ToWebviewMessage = {
@@ -1447,7 +1453,7 @@ export class FlowCommandWebviewProvider
         this._currentSessionCalls.unshift(entry);
         this._currentSessionCallsMap.set(entry.id, entry); // Maintain O(1) lookup map
         this._trimCurrentSessionCalls();
-        this._updateCurrentSessionUI();
+        this._appendCompletedEntryUI(entry);
         this._currentToolCallId = null;
 
         return {
@@ -2021,7 +2027,7 @@ export class FlowCommandWebviewProvider
         // Update processing state - AI is now processing the user's response
         this._setProcessingState(true);
 
-        this._updateCurrentSessionUI();
+        this._appendCompletedEntryUI(completedEntry);
 
         // Append template to the prompt if active
         const finalValue = this._appendTemplateToPrompt(value);
@@ -2871,7 +2877,10 @@ export class FlowCommandWebviewProvider
    * Handle opening history modal - send persisted history to webview
    */
   private _handleOpenHistoryModal(): void {
-    this._updatePersistedHistoryUI();
+    // Ensure history is loaded (lazy) then send to webview
+    this._ensureHistoryLoaded().then(() => {
+      this._updatePersistedHistoryUI();
+    });
   }
 
   /**
@@ -3541,6 +3550,19 @@ export class FlowCommandWebviewProvider
   }
 
   /**
+   * Efficiently push a single completed entry to the session UI without
+   * re-serialising and re-rendering the entire history array.
+   * Use this instead of _updateCurrentSessionUI() when only one entry changed.
+   */
+  private _appendCompletedEntryUI(entry: ToolCallEntry): void {
+    this._postMessage({
+      type: "appendSessionEntry",
+      entry,
+    } as ToWebviewMessage);
+    this._saveCurrentSessionToDisk();
+  }
+
+  /**
    * Update persisted history UI in webview (for modal)
    */
   private _updatePersistedHistoryUI(): void {
@@ -3640,6 +3662,64 @@ export class FlowCommandWebviewProvider
     );
   }
 
+  /**
+   * Ensure persisted history has been loaded from disk (lazy loader).
+   * Safe to call multiple times — no-op if already loaded.
+   */
+  private async _ensureHistoryLoaded(): Promise<void> {
+    if (this._persistedHistoryLoaded) return;
+    await this._loadPersistedHistoryFromDiskAsync();
+  }
+
+  /**
+   * Synchronous version of history loading — used only by saveCurrentSessionToHistory()
+   * which is called during VS Code deactivation (cannot await async).
+   */
+  private _loadPersistedHistorySync(): void {
+    try {
+      const storagePath = this._context.globalStorageUri.fsPath;
+      const historyPath = path.join(storagePath, "tool-history.json");
+
+      if (!fs.existsSync(historyPath)) {
+        this._persistedHistory = [];
+        this._persistedHistoryLoaded = true;
+        return;
+      }
+
+      const data = fs.readFileSync(historyPath, "utf8");
+      if (!data || !data.trim()) {
+        this._persistedHistory = [];
+        this._persistedHistoryLoaded = true;
+        return;
+      }
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        this._persistedHistory = [];
+        this._persistedHistoryLoaded = true;
+        return;
+      }
+
+      const parsedObj = parsed as Record<string, unknown>;
+      this._persistedHistory = Array.isArray(parsedObj.history)
+        ? ((parsedObj.history as unknown[])
+            .filter(
+              (entry: unknown) =>
+                this._isValidHistoryEntry(entry) &&
+                (entry as ToolCallEntry).status === "completed",
+            )
+            .slice(0, this._MAX_HISTORY_ENTRIES) as ToolCallEntry[])
+        : [];
+      this._persistedHistoryLoaded = true;
+    } catch (error) {
+      console.error("[FlowCommand] Failed to sync-load history:", error);
+      this._persistedHistory = [];
+      this._persistedHistoryLoaded = true;
+    }
+  }
+
   private async _loadPersistedHistoryFromDiskAsync(): Promise<void> {
     try {
       const storagePath = this._context.globalStorageUri.fsPath;
@@ -3708,6 +3788,8 @@ export class FlowCommandWebviewProvider
     } catch (error) {
       console.error("[FlowCommand] Failed to load persisted history:", error);
       this._persistedHistory = [];
+    } finally {
+      this._persistedHistoryLoaded = true;
     }
   }
 

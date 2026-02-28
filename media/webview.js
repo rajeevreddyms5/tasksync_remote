@@ -1711,6 +1711,26 @@
           // Auto-scroll to bottom after rendering
           scrollToBottom();
           break;
+        case "appendSessionEntry": {
+          // Efficient incremental update: add/update one entry without re-rendering all cards
+          var appendedEntry = message.entry;
+          var existingIdx = currentSessionCalls.findIndex(function (e) {
+            return e.id === appendedEntry.id;
+          });
+          if (existingIdx >= 0) {
+            // Update in place (e.g. pending → completed transition)
+            currentSessionCalls[existingIdx] = appendedEntry;
+          } else {
+            // New entry — newest items live at the front of the array
+            currentSessionCalls.unshift(appendedEntry);
+          }
+          if (appendedEntry.status === "completed") {
+            appendToCurrentSessionDom(appendedEntry);
+            updateWelcomeSectionVisibility();
+            scrollToBottom();
+          }
+          break;
+        }
         case "updatePersistedHistory":
           persistedHistory = message.history || [];
           renderHistoryModal();
@@ -2086,6 +2106,87 @@
     }
   }
 
+  /**
+   * Build the HTML for a single current-session tool-call card.
+   * @param {object} tc   - ToolCallEntry
+   * @param {boolean} isLatest - Whether this is the newest card (shown expanded)
+   */
+  function buildSessionCardHtml(tc, isLatest) {
+    var firstSentence = tc.prompt.split(/[.!?]/)[0];
+    var truncatedTitle =
+      firstSentence.length > 120
+        ? firstSentence.substring(0, 120) + "..."
+        : firstSentence;
+    var queueBadge = tc.isFromQueue
+      ? '<span class="tool-call-badge queue">Queue</span>'
+      : "";
+
+    return (
+      '<div class="tool-call-card' +
+      (isLatest ? " expanded" : "") +
+      '" data-id="' +
+      escapeHtml(tc.id) +
+      '">' +
+      '<div class="tool-call-header">' +
+      '<div class="tool-call-chevron"><span class="codicon codicon-chevron-down"></span></div>' +
+      '<div class="tool-call-icon"><span class="codicon codicon-copilot"></span></div>' +
+      '<div class="tool-call-header-wrapper">' +
+      '<span class="tool-call-title">' +
+      escapeHtml(truncatedTitle) +
+      queueBadge +
+      "</span>" +
+      "</div>" +
+      "</div>" +
+      '<div class="tool-call-body">' +
+      (tc.context
+        ? '<div class="tool-call-context"><div class="context-label"><span class="codicon codicon-copilot"></span> AI Response</div><div class="context-content">' +
+          formatMarkdown(tc.context) +
+          "</div></div>"
+        : "") +
+      '<div class="tool-call-ai-response">' +
+      formatMarkdown(tc.prompt) +
+      "</div>" +
+      '<div class="tool-call-user-section">' +
+      '<div class="tool-call-user-response">' +
+      escapeHtml(tc.response) +
+      "</div>" +
+      (tc.attachments ? renderAttachmentsHtml(tc.attachments) : "") +
+      "</div>" +
+      "</div></div>"
+    );
+  }
+
+  /**
+   * Append a single completed entry card to toolHistoryArea without
+   * re-rendering the entire list. Marks it as the new "latest" (expanded).
+   */
+  function appendToCurrentSessionDom(tc) {
+    if (!toolHistoryArea) return;
+
+    // Collapse the previously-latest card
+    var prevLatest = toolHistoryArea.querySelector(".tool-call-card.expanded");
+    if (prevLatest) prevLatest.classList.remove("expanded");
+
+    // Build and inject the new card
+    var wrapper = document.createElement("div");
+    wrapper.innerHTML = buildSessionCardHtml(tc, true);
+    var newCard = wrapper.firstElementChild;
+
+    // Bind collapse/expand event
+    var header = newCard && newCard.querySelector(".tool-call-header");
+    if (header) {
+      header.addEventListener("click", function () {
+        var card = header.closest(".tool-call-card");
+        if (card) card.classList.toggle("expanded");
+      });
+    }
+
+    toolHistoryArea.appendChild(newCard);
+
+    // Render any mermaid diagrams that may be in the new card
+    renderMermaidDiagrams();
+  }
+
   function renderCurrentSession() {
     if (!toolHistoryArea) return;
 
@@ -2104,51 +2205,8 @@
 
     var cardsHtml = sortedCalls
       .map(function (tc, index) {
-        // Get first sentence for title - let CSS handle truncation with ellipsis
-        var firstSentence = tc.prompt.split(/[.!?]/)[0];
-        var truncatedTitle =
-          firstSentence.length > 120
-            ? firstSentence.substring(0, 120) + "..."
-            : firstSentence;
-        var queueBadge = tc.isFromQueue
-          ? '<span class="tool-call-badge queue">Queue</span>'
-          : "";
-
-        // Build card HTML - NO X button for current session cards
         var isLatest = index === sortedCalls.length - 1;
-        var cardHtml =
-          '<div class="tool-call-card' +
-          (isLatest ? " expanded" : "") +
-          '" data-id="' +
-          escapeHtml(tc.id) +
-          '">' +
-          '<div class="tool-call-header">' +
-          '<div class="tool-call-chevron"><span class="codicon codicon-chevron-down"></span></div>' +
-          '<div class="tool-call-icon"><span class="codicon codicon-copilot"></span></div>' +
-          '<div class="tool-call-header-wrapper">' +
-          '<span class="tool-call-title">' +
-          escapeHtml(truncatedTitle) +
-          queueBadge +
-          "</span>" +
-          "</div>" +
-          "</div>" +
-          '<div class="tool-call-body">' +
-          (tc.context
-            ? '<div class="tool-call-context"><div class="context-label"><span class="codicon codicon-copilot"></span> AI Response</div><div class="context-content">' +
-              formatMarkdown(tc.context) +
-              "</div></div>"
-            : "") +
-          '<div class="tool-call-ai-response">' +
-          formatMarkdown(tc.prompt) +
-          "</div>" +
-          '<div class="tool-call-user-section">' +
-          '<div class="tool-call-user-response">' +
-          escapeHtml(tc.response) +
-          "</div>" +
-          (tc.attachments ? renderAttachmentsHtml(tc.attachments) : "") +
-          "</div>" +
-          "</div></div>";
-        return cardHtml;
+        return buildSessionCardHtml(tc, isLatest);
       })
       .join("");
 
