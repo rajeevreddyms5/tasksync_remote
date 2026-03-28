@@ -2545,6 +2545,55 @@
     document.head.appendChild(script);
   }
 
+  /**
+   * Clean up stale mermaid error elements from the DOM.
+   * Mermaid v10 inserts error divs into document.body on render failures.
+   */
+  function cleanupMermaidErrors() {
+    try {
+      // Mermaid v10 inserts error containers with id "d*" pattern into body
+      var errorDivs = document.querySelectorAll(
+        'body > #d[id*="-svg"], body > .error-icon, body > [id^="dmermaid"]',
+      );
+      errorDivs.forEach(function (el) {
+        el.remove();
+      });
+      // Also clean up any orphaned mermaid error text nodes
+      var bodyChildren = document.body.childNodes;
+      for (var i = bodyChildren.length - 1; i >= 0; i--) {
+        var child = bodyChildren[i];
+        if (
+          child.nodeType === 3 &&
+          child.textContent &&
+          child.textContent.indexOf("Syntax error") !== -1
+        ) {
+          child.remove();
+        }
+      }
+    } catch (e) {
+      // Ignore cleanup errors
+    }
+  }
+
+  /**
+   * Sanitize mermaid code that may have been double-escaped from history/crash recovery.
+   * Decodes HTML entities that shouldn't be in mermaid syntax.
+   */
+  function sanitizeMermaidCode(code) {
+    if (!code) return "";
+    // Decode common HTML entities that break mermaid syntax
+    var sanitized = code
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;/g, "'")
+      .replace(/&#x27;/g, "'");
+    // Trim whitespace and remove null bytes (crash corruption)
+    sanitized = sanitized.replace(/\0/g, "").trim();
+    return sanitized;
+  }
+
   function renderMermaidDiagrams() {
     var containers = document.querySelectorAll(
       ".mermaid-container:not(.rendered)",
@@ -2556,8 +2605,19 @@
         var mermaidDiv = container.querySelector(".mermaid");
         if (!mermaidDiv) return;
 
-        var code = mermaidDiv.textContent;
+        var rawCode = mermaidDiv.textContent;
+        var code = sanitizeMermaidCode(rawCode);
         var id = mermaidDiv.id;
+
+        // Skip empty or clearly invalid mermaid code
+        if (!code || code.length < 3) {
+          mermaidDiv.innerHTML =
+            '<pre class="code-block" data-lang="mermaid"><code>' +
+            escapeHtml(rawCode || "") +
+            "</code></pre>";
+          container.classList.add("rendered", "error");
+          return;
+        }
 
         try {
           window.mermaid
@@ -2565,21 +2625,35 @@
             .then(function (result) {
               mermaidDiv.innerHTML = result.svg;
               container.classList.add("rendered");
+              // Clean up any error elements mermaid v10 may have inserted
+              cleanupMermaidErrors();
             })
             .catch(function (err) {
+              console.log(
+                "[FlowCommand] Mermaid render error (caught):",
+                err && err.message ? err.message : err,
+              );
               // Show code block as fallback on error
               mermaidDiv.innerHTML =
                 '<pre class="code-block" data-lang="mermaid"><code>' +
                 escapeHtml(code) +
                 "</code></pre>";
               container.classList.add("rendered", "error");
+              // Clean up mermaid error elements from DOM body
+              cleanupMermaidErrors();
             });
         } catch (err) {
+          console.log(
+            "[FlowCommand] Mermaid render error (sync):",
+            err && err.message ? err.message : err,
+          );
           mermaidDiv.innerHTML =
             '<pre class="code-block" data-lang="mermaid"><code>' +
             escapeHtml(code) +
             "</code></pre>";
           container.classList.add("rendered", "error");
+          // Clean up mermaid error elements from DOM body
+          cleanupMermaidErrors();
         }
       });
     });

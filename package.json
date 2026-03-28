@@ -4,7 +4,7 @@
   "displayName": "FlowCommand",
   "description": "Command your AI workflow. Queue prompts, review plans, control from phone/browser.",
   "icon": "media/FlowCommand-logo.png",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "engines": {
     "vscode": "^1.90.0"
   },
